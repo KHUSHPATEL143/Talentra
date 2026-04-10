@@ -30,6 +30,7 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
     return JobStatusResponse(
         job_id=job_id,
         status=status,  # type: ignore[arg-type]
+        file_count=total_count,
         completed_count=completed_count,
         total_count=total_count,
         results=results,

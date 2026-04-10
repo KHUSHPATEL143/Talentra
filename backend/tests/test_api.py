@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 
 import pytest
+from starlette.datastructures import Headers
 from starlette.datastructures import UploadFile
 
 from app.api.routes.parse import _read_and_validate_file
@@ -14,9 +15,7 @@ from app.api.routes.parse import _read_and_validate_file
 async def test_read_and_validate_file_accepts_plain_text() -> None:
     """TXT uploads under the file-size limit should validate successfully."""
 
-    upload = UploadFile(filename="resume.txt", file=io.BytesIO(b"hello world"))
-    upload.headers["content-type"] = "text/plain"
-    upload.content_type = "text/plain"
+    upload = UploadFile(filename="resume.txt", file=io.BytesIO(b"hello world"), headers=Headers({"content-type": "text/plain"}))
 
     file_bytes, mime_type = await _read_and_validate_file(upload)
 

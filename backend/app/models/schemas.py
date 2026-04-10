@@ -261,6 +261,7 @@ class JobStatusResponse(BaseModel):
 
     job_id: str
     status: Literal["queued", "pending", "processing", "done", "failed"]
+    file_count: int | None = None
     completed_count: int
     total_count: int
     results: list[dict[str, Any]] = Field(default_factory=list)

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import json
 import uuid
@@ -238,4 +237,4 @@ async def parse_resume_batch(
         await redis.lpush(f"jobs:{batch_id}", json.dumps(payload))
 
     background_tasks.add_task(_consume_batch_queue, request.app, batch_id)
-    return JobStatusResponse(job_id=batch_id, status="queued", completed_count=0, total_count=len(files), results=[], errors=[])
+    return JobStatusResponse(job_id=batch_id, status="queued", file_count=len(files), completed_count=0, total_count=len(files), results=[], errors=[])

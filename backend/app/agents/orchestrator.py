@@ -14,11 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.matching_agent import MatchingAgent
 from app.agents.normalization_agent import NormalizationAgent
 from app.agents.parsing_agent import ParsingAgent
+from app.core.config import get_settings
 from app.models.schemas import AgentTrace, CandidateProfile, MatchWeights, SkillProfile
 from app.services.embedding_service import EmbeddingService
 from app.utils.metrics import record_agent_run
 
 logger = structlog.get_logger(__name__)
+settings = get_settings()
 
 
 class OrchestratorState(TypedDict, total=False):
@@ -104,7 +106,7 @@ class ResumeOrchestrator:
     ) -> list[OrchestratorState]:
         """Run the graph concurrently for a batch of files using a semaphore."""
 
-        semaphore = asyncio.Semaphore(4)
+        semaphore = asyncio.Semaphore(settings.max_workers)
 
         async def _runner(item: dict[str, Any]) -> OrchestratorState:
             async with semaphore:
