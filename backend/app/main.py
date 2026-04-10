@@ -56,12 +56,29 @@ def configure_logging() -> None:
 
 
 async def seed_default_api_key() -> None:
-    """Insert a development API key if the table is empty."""
+    """Ensure a development API key exists and print the usable raw key."""
 
     async with AsyncSessionFactory() as session:
+        configured_key = settings.default_api_key.strip()
+        if configured_key:
+            configured_hash = hashlib.sha256(configured_key.encode("utf-8")).hexdigest()
+            existing = await session.scalar(select(ApiKey).where(ApiKey.key_hash == configured_hash))
+            if existing is None:
+                session.add(
+                    ApiKey(
+                        key_hash=configured_hash,
+                        owner=settings.default_api_key_owner,
+                        rate_limit_per_min=60,
+                    )
+                )
+                await session.commit()
+            print(f"DEV API KEY: {configured_key}")
+            return
+
         count = await session.scalar(select(func.count()).select_from(ApiKey))
         if count and count > 0:
             return
+
         raw_key = str(uuid.uuid4())
         key_hash = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
         record = ApiKey(key_hash=key_hash, owner=settings.default_api_key_owner, rate_limit_per_min=60)

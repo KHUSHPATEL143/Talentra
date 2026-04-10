@@ -1,5 +1,25 @@
 import axios from "axios";
 
+const LOCAL_STORAGE_API_KEY = "garuda_api_key";
+
+export function getClientApiKey() {
+  if (typeof window === "undefined") {
+    return process.env.REACT_APP_API_KEY || "";
+  }
+  return window.localStorage.getItem(LOCAL_STORAGE_API_KEY) || process.env.REACT_APP_API_KEY || "";
+}
+
+export function setClientApiKey(value) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (value) {
+    window.localStorage.setItem(LOCAL_STORAGE_API_KEY, value);
+  } else {
+    window.localStorage.removeItem(LOCAL_STORAGE_API_KEY);
+  }
+}
+
 const api = axios.create({
   baseURL: process.env.REACT_APP_API_URL || "http://localhost:8000/api/v1"
 });
@@ -7,8 +27,9 @@ const api = axios.create({
 api.interceptors.request.use((config) => {
   const nextConfig = { ...config };
   nextConfig.headers = nextConfig.headers || {};
-  if (process.env.REACT_APP_API_KEY) {
-    nextConfig.headers["X-API-Key"] = process.env.REACT_APP_API_KEY;
+  const apiKey = getClientApiKey();
+  if (apiKey) {
+    nextConfig.headers["X-API-Key"] = apiKey;
   }
   return nextConfig;
 });

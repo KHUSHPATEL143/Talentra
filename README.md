@@ -38,6 +38,7 @@ docker compose up --build
 ```
 
 If `DEFAULT_API_KEY` is left blank, the backend seeds a UUID development key at first startup and prints it to the backend logs as `DEV API KEY: ...`.
+If you want the browser frontend to work immediately against protected endpoints, set the same value in both `DEFAULT_API_KEY` and `REACT_APP_API_KEY` before running `docker compose up --build`. You can also paste the printed key into the API key field in the app header after startup.
 
 ## API Endpoints
 

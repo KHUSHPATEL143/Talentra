@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     redis_cache_ttl_seconds: int = 3600
     webhook_timeout_seconds: int = 10
     default_api_key_owner: str = "local-dev"
+    default_api_key: str = ""
     frontend_origin: str = "http://localhost:3000"
     taxonomy_path: str = Field(default="data/taxonomy/skills_taxonomy.json")
     inference_rules_path: str = Field(default="data/taxonomy/inference_rules.yaml")
