@@ -1,0 +1,1 @@
+"""GARUDA backend application package."""

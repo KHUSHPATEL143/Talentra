@@ -1,0 +1,17 @@
+rules:
+  - triggers: [TensorFlow, PyTorch]
+    infers: Deep Learning
+  - triggers: [React, Redux]
+    infers: Frontend Engineering
+  - triggers: [Docker, Kubernetes]
+    infers: Container Orchestration
+  - triggers: [PostgreSQL, MySQL]
+    infers: Relational Databases
+  - triggers: [AWS, Azure, GCP]
+    infers: Cloud Computing
+  - triggers: [Pandas, NumPy, Scikit-learn]
+    infers: Data Science
+  - triggers: [Jenkins, GitHub Actions]
+    infers: CI/CD
+  - triggers: [Jest, Pytest]
+    infers: Test Automation
