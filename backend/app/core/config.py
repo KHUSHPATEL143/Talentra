@@ -8,6 +8,8 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+BASE_DIR = Path(__file__).resolve().parents[2]
+
 
 class Settings(BaseSettings):
     """Central application configuration."""
@@ -33,8 +35,8 @@ class Settings(BaseSettings):
     webhook_timeout_seconds: int = 10
     default_api_key_owner: str = "local-dev"
     frontend_origin: str = "http://localhost:3000"
-    taxonomy_path: str = Field(default="backend/data/taxonomy/skills_taxonomy.json")
-    inference_rules_path: str = Field(default="backend/data/taxonomy/inference_rules.yaml")
+    taxonomy_path: str = Field(default="data/taxonomy/skills_taxonomy.json")
+    inference_rules_path: str = Field(default="data/taxonomy/inference_rules.yaml")
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -52,13 +54,15 @@ class Settings(BaseSettings):
     def resolved_taxonomy_path(self) -> Path:
         """Return the absolute path to the taxonomy seed file."""
 
-        return Path(self.taxonomy_path).resolve()
+        path = Path(self.taxonomy_path)
+        return path if path.is_absolute() else (BASE_DIR / path).resolve()
 
     @property
     def resolved_inference_rules_path(self) -> Path:
         """Return the absolute path to the inference rules file."""
 
-        return Path(self.inference_rules_path).resolve()
+        path = Path(self.inference_rules_path)
+        return path if path.is_absolute() else (BASE_DIR / path).resolve()
 
 
 @lru_cache(maxsize=1)
