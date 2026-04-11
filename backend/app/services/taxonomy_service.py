@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +30,10 @@ class TaxonomyService:
         self.llm_service = llm_service
         self.taxonomy_entries = self._load_taxonomy_file(self.settings.resolved_taxonomy_path)
         self.alias_index = self._build_alias_index(self.taxonomy_entries)
+        self.normalized_alias_index = self._build_normalized_alias_index(self.taxonomy_entries)
+        self.fuzzy_choices = list(self.normalized_alias_index.keys())
         self.collection = get_skill_collection()
+        self._llm_cache: dict[str, SkillFallbackResponse] = {}
 
     def _load_taxonomy_file(self, path: Path) -> list[dict[str, Any]]:
         """Load taxonomy JSON entries from disk."""
@@ -45,6 +49,26 @@ class TaxonomyService:
             for value in values:
                 index[value.strip().lower()] = entry
         return index
+
+    def _build_normalized_alias_index(self, entries: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+        """Build a punctuation-tolerant alias lookup index."""
+
+        index: dict[str, dict[str, Any]] = {}
+        for entry in entries:
+            values = [entry["canonical_name"], *entry.get("aliases", [])]
+            for value in values:
+                normalized = self._normalize_lookup_key(value)
+                if normalized:
+                    index[normalized] = entry
+        return index
+
+    def _normalize_lookup_key(self, value: str) -> str:
+        """Normalize skill text so common punctuation and spacing variants resolve locally."""
+
+        lowered = value.strip().lower().replace("&", " and ")
+        lowered = lowered.replace(".js", " js").replace(".net", " net")
+        lowered = re.sub(r"[^a-z0-9+#]+", " ", lowered)
+        return re.sub(r"\s+", " ", lowered).strip()
 
     async def seed_taxonomy(self, session: AsyncSession) -> None:
         """Seed PostgreSQL and ChromaDB with taxonomy data when empty."""
@@ -77,19 +101,27 @@ class TaxonomyService:
     def exact_match(self, raw_skill: str) -> dict[str, Any] | None:
         """Return an exact taxonomy match for a skill alias."""
 
-        return self.alias_index.get(raw_skill.strip().lower())
+        stripped = raw_skill.strip().lower()
+        if stripped in self.alias_index:
+            return self.alias_index[stripped]
+        normalized = self._normalize_lookup_key(raw_skill)
+        if normalized:
+            return self.normalized_alias_index.get(normalized)
+        return None
 
     def fuzzy_match(self, raw_skill: str, threshold: int = 85) -> tuple[dict[str, Any] | None, float]:
         """Return the best fuzzy match above threshold."""
 
-        choices = [entry["canonical_name"] for entry in self.taxonomy_entries]
-        result = process.extractOne(raw_skill, choices, scorer=fuzz.token_sort_ratio)
+        normalized = self._normalize_lookup_key(raw_skill)
+        if not normalized:
+            return None, 0.0
+        result = process.extractOne(normalized, self.fuzzy_choices, scorer=fuzz.token_sort_ratio)
         if not result:
             return None, 0.0
         choice, score, _ = result
         if score < threshold:
             return None, float(score) / 100.0
-        return self.alias_index[choice.lower()], float(score) / 100.0
+        return self.normalized_alias_index[choice], float(score) / 100.0
 
     async def embedding_match(self, raw_skill: str, threshold: float = 0.82) -> tuple[dict[str, Any] | None, float]:
         """Return the best embedding-based taxonomy match."""
@@ -108,8 +140,26 @@ class TaxonomyService:
     async def llm_match(self, raw_skill: str) -> SkillFallbackResponse:
         """Use the LLM to map a skill to the taxonomy."""
 
-        context = [entry["canonical_name"] for entry in self.taxonomy_entries[:200]]
-        return await self.llm_service.fallback_normalize_skill(raw_skill, context)
+        cache_key = self._normalize_lookup_key(raw_skill) or raw_skill.strip().lower()
+        if cache_key in self._llm_cache:
+            return self._llm_cache[cache_key]
+
+        context = self._build_llm_context(raw_skill)
+        result = await self.llm_service.fallback_normalize_skill(raw_skill, context)
+        self._llm_cache[cache_key] = result
+        return result
+
+    def _build_llm_context(self, raw_skill: str, limit: int = 25) -> list[str]:
+        """Return a narrowed taxonomy context for LLM fallback prompts."""
+
+        normalized = self._normalize_lookup_key(raw_skill)
+        if normalized:
+            candidates = process.extract(normalized, self.fuzzy_choices, scorer=fuzz.token_sort_ratio, limit=limit)
+            context = [self.normalized_alias_index[choice]["canonical_name"] for choice, _, _ in candidates]
+            deduped = list(dict.fromkeys(context))
+            if deduped:
+                return deduped
+        return [entry["canonical_name"] for entry in self.taxonomy_entries[:limit]]
 
     async def mark_pending_review(
         self,

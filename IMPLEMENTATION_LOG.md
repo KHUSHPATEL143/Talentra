@@ -32,12 +32,15 @@ This file tracks what is fully implemented, what is currently in progress, and w
 ### Skill Normalization
 - Taxonomy seed with 200+ canonical skills and aliases
 - Exact alias lookup normalization
+- Punctuation-tolerant exact alias lookup for common spacing and symbol variants
 - Fuzzy matching with RapidFuzz
 - Embedding-based matching through ChromaDB
 - LLM fallback for difficult or emerging skills
+- In-process caching for repeated LLM skill fallback requests
 - Pending taxonomy review storage for low-confidence skills
 - Proficiency estimation from resume context
 - Rule-based skill inference from YAML rules
+- Raw skill cleanup and noise filtering before expensive normalization tiers
 
 ### Matching Engine
 - Job-description parsing pipeline
@@ -89,14 +92,19 @@ This file tracks what is fully implemented, what is currently in progress, and w
 ## Currently In Progress
 
 ### End-To-End Runtime Validation
-- Validating real resume uploads through the frontend and backend together
-- Verifying real candidate profile creation from actual resumes
-- Verifying real match flow against live job descriptions
+- Real single-resume parse flow is working end to end through frontend and backend
+- Candidate profile retrieval and normalized skill retrieval are working after upload
+- Continuing live validation of match flow against real job descriptions
 
 ### Parse Quality Hardening
 - Improving reliability of parsed output on real-world resume layouts
 - Reducing unnecessary LLM usage for simple extraction tasks
 - Surfacing cleaner failure messages for partial pipeline failures
+
+### Normalization Performance Hardening
+- Reducing Gemini usage inside the normalization stage
+- Cutting normalization latency on real resumes with larger skill lists
+- Improving local matching coverage before LLM fallback
 
 ### Matching Quality Hardening
 - Validating real-world semantic match scores
@@ -110,6 +118,7 @@ This file tracks what is fully implemented, what is currently in progress, and w
 - Validate parsed profile accuracy field by field
 - Validate match results on multiple job descriptions
 - Verify taxonomy browser and candidate skills views with live data
+- Measure and improve normalization latency on larger resumes
 
 ### PRD Alignment Improvements
 - Strengthen webhook delivery validation with real test endpoints

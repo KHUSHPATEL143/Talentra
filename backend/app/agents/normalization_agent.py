@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from typing import Any
 
@@ -14,6 +15,15 @@ from app.utils.proficiency import estimate_skill_proficiency
 from app.utils.skill_inference import SkillInferenceEngine
 
 logger = structlog.get_logger(__name__)
+
+SKILL_SECTION_HEADINGS = {
+    "skills",
+    "technical skills",
+    "core competencies",
+    "tech stack",
+    "technologies",
+    "tools",
+}
 
 
 class NormalizationAgent:
@@ -40,8 +50,9 @@ class NormalizationAgent:
         emerging_skills: list[str] = []
         seen: set[str] = set()
         context_text = self._build_context(candidate_profile, raw_text)
+        prepared_skills = self._prepare_skill_candidates(candidate_profile.skills)
 
-        for raw_skill in candidate_profile.skills:
+        for raw_skill in prepared_skills:
             normalized = await self._normalize_skill(raw_skill, context_text, session)
             if normalized.name not in seen:
                 normalized_skills.append(normalized)
@@ -85,15 +96,23 @@ class NormalizationAgent:
             2,
         )
         latency_ms = int((time.perf_counter() - started_at) * 1000)
-        quality_score = round(len(normalized_skills) / max(len(candidate_profile.skills), 1), 3)
+        quality_score = round(len(normalized_skills) / max(len(prepared_skills), 1), 3)
         skill_profile = SkillProfile(
-            raw_skills=candidate_profile.skills,
+            raw_skills=prepared_skills,
             normalized_skills=normalized_skills,
             inferred_skills=sorted(inferred_names),
             emerging_skills=emerging_skills,
             total_experience_years=total_experience_years,
         )
-        logger.info("agent.exit", job_id=job_id, agent_name="normalization_agent", latency_ms=latency_ms)
+        logger.info(
+            "agent.exit",
+            job_id=job_id,
+            agent_name="normalization_agent",
+            latency_ms=latency_ms,
+            raw_skill_count=len(candidate_profile.skills),
+            prepared_skill_count=len(prepared_skills),
+            normalized_skill_count=len(normalized_skills),
+        )
         return AgentMessage(
             job_id=job_id,
             stage="normalized",
@@ -193,3 +212,59 @@ class NormalizationAgent:
         if weight >= 0.5:
             return "intermediate"
         return "beginner"
+
+    def _prepare_skill_candidates(self, raw_skills: list[str]) -> list[str]:
+        """Clean, split, and deduplicate raw skills before expensive normalization tiers."""
+
+        prepared: list[str] = []
+        seen: set[str] = set()
+        for raw_skill in raw_skills:
+            for candidate in self._split_skill_candidate(raw_skill):
+                cleaned = self._clean_skill_candidate(candidate)
+                if not cleaned or not self._looks_like_skill(cleaned):
+                    continue
+                key = cleaned.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                prepared.append(cleaned)
+        return prepared
+
+    def _split_skill_candidate(self, raw_skill: str) -> list[str]:
+        """Split combined skill strings into smaller candidate tokens."""
+
+        value = raw_skill.strip()
+        if not value:
+            return []
+        lowered = value.lower()
+        if "http" in lowered or "linkedin.com" in lowered or "github.com" in lowered:
+            return [value]
+        if len(value) > 80 and "," not in value and "|" not in value:
+            return [value]
+        parts = re.split(r"[,\n|;/]+", value)
+        return [part.strip() for part in parts if part.strip()]
+
+    def _clean_skill_candidate(self, value: str) -> str:
+        """Normalize spacing and bullet artifacts in a skill token."""
+
+        cleaned = value.replace("â€¢", " ").replace("\u2022", " ").strip(" -:\t")
+        cleaned = re.sub(r"\s+", " ", cleaned)
+        return cleaned.strip()
+
+    def _looks_like_skill(self, value: str) -> bool:
+        """Filter out headings, URLs, emails, and sentence-like fragments."""
+
+        lowered = value.lower().strip()
+        if not lowered or lowered in SKILL_SECTION_HEADINGS:
+            return False
+        if "http" in lowered or "@" in lowered or ".com" in lowered:
+            return False
+        if len(lowered) > 48:
+            return False
+        word_count = len(lowered.split())
+        if word_count > 4:
+            return False
+        if re.search(r"\b(responsible|developed|managed|designed|worked|experience)\b", lowered):
+            return False
+        alnum_count = sum(char.isalnum() for char in lowered)
+        return alnum_count >= 2

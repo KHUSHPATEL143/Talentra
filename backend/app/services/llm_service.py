@@ -6,9 +6,13 @@ import asyncio
 import json
 from typing import Any, TypeVar
 
-from google import genai
 from openai import AsyncOpenAI
 from pydantic import BaseModel
+
+try:
+    from google import genai
+except ImportError:  # pragma: no cover - exercised in local environments without Gemini SDK
+    genai = None
 
 from app.core.config import get_settings
 from app.models.schemas import (
@@ -31,7 +35,7 @@ class LLMService:
         self.settings = settings
         self.provider = self._resolve_provider()
         self.openai_client = AsyncOpenAI(api_key=settings.openai_api_key) if settings.openai_api_key else None
-        self.gemini_client = genai.Client(api_key=settings.gemini_api_key) if settings.gemini_api_key else None
+        self.gemini_client = genai.Client(api_key=settings.gemini_api_key) if settings.gemini_api_key and genai else None
 
     def _resolve_provider(self) -> str:
         """Resolve the active LLM provider from config and available keys."""
@@ -118,6 +122,8 @@ class LLMService:
         """Call Gemini structured outputs using JSON schema."""
 
         if not self.gemini_client or not self.settings.gemini_api_key:
+            if not genai:
+                raise ValueError("The Gemini SDK is not installed. Add google-genai to use LLM_PROVIDER=gemini.")
             raise ValueError("GEMINI_API_KEY is required when LLM_PROVIDER=gemini.")
 
         def _generate() -> str:
