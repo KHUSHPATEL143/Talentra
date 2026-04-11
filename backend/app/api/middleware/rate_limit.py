@@ -18,6 +18,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         """Reject requests that exceed the configured per-minute quota."""
 
+        if request.method.upper() == "OPTIONS":
+            return await call_next(request)
+
         if request.url.path in {"/docs", "/openapi.json", "/redoc"}:
             return await call_next(request)
 

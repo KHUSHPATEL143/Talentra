@@ -25,6 +25,9 @@ class ApiKeyAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         """Authenticate the request and attach API key metadata to request state."""
 
+        if request.method.upper() == "OPTIONS":
+            return await call_next(request)
+
         if request.url.path in self.open_paths:
             return await call_next(request)
 
