@@ -18,6 +18,7 @@ from app.models.schemas import (
     SkillProfile,
 )
 from app.services.embedding_service import EmbeddingService
+from app.services.job_heuristics import JobHeuristicService
 from app.services.llm_service import LLMService
 
 logger = structlog.get_logger(__name__)
@@ -34,11 +35,17 @@ UPSUGGESTIONS = {
 class MatchingAgent:
     """Match a normalized candidate skill profile against a job description."""
 
-    def __init__(self, embedding_service: EmbeddingService, llm_service: LLMService) -> None:
+    def __init__(
+        self,
+        embedding_service: EmbeddingService,
+        llm_service: LLMService,
+        job_heuristic_service: JobHeuristicService,
+    ) -> None:
         """Store dependencies needed for semantic matching."""
 
         self.embedding_service = embedding_service
         self.llm_service = llm_service
+        self.job_heuristic_service = job_heuristic_service
         self.settings = get_settings()
 
     async def run(
@@ -73,7 +80,8 @@ class MatchingAgent:
                 partial=True,
             )
 
-        parsed_requirements = await self.llm_service.parse_job_requirements(job_description)
+        heuristic_requirements = self.job_heuristic_service.extract_requirements(job_description)
+        parsed_requirements = await self._parse_requirements(job_description, heuristic_requirements)
         selected_weights = weights or MatchWeights()
         threshold = self._resolve_threshold(mode)
         match_result = await self._calculate_match(skill_profile, parsed_requirements, selected_weights, threshold)
@@ -164,11 +172,18 @@ class MatchingAgent:
 
         score = round((weighted_score / total_weight) * 100 if total_weight else 0.0, 1)
         grade = self._score_to_grade(score)
-        recommendations = await self.llm_service.generate_recommendations(
-            candidate_summary=", ".join(candidate_names),
-            matched_skills=[item.skill for item in matched_skills],
-            missing_skills=[item.skill for item in missing_skills],
-        )
+        try:
+            recommendations = await self.llm_service.generate_recommendations(
+                candidate_summary=", ".join(candidate_names),
+                matched_skills=[item.skill for item in matched_skills],
+                missing_skills=[item.skill for item in missing_skills],
+            )
+        except Exception:
+            recommendations = self.job_heuristic_service.generate_recommendations(
+                matched_skills=[item.skill for item in matched_skills],
+                missing_skills=[item.skill for item in missing_skills],
+                experience_match=experience_match,
+            )
         return MatchResult(
             score=score,
             grade=grade,
@@ -178,6 +193,24 @@ class MatchingAgent:
             recommendations=recommendations,
             parsed_requirements=JobRequirementExtraction.model_validate(requirements.model_dump()),
         )
+
+    async def _parse_requirements(
+        self,
+        job_description: str,
+        heuristic_requirements: JobRequirementExtraction,
+    ) -> JobRequirementExtraction:
+        """Use heuristics first and enrich with the LLM when available."""
+
+        try:
+            llm_requirements = await self.llm_service.parse_job_requirements(job_description)
+            return JobRequirementExtraction(
+                required_skills=self._merge_unique(heuristic_requirements.required_skills, llm_requirements.required_skills),
+                preferred_skills=self._merge_unique(heuristic_requirements.preferred_skills, llm_requirements.preferred_skills),
+                min_experience_years=llm_requirements.min_experience_years or heuristic_requirements.min_experience_years,
+                role_level=llm_requirements.role_level or heuristic_requirements.role_level,
+            )
+        except Exception:
+            return heuristic_requirements
 
     def _best_candidate_match(
         self,
@@ -213,3 +246,16 @@ class MatchingAgent:
         if score >= 50:
             return "C"
         return "F"
+
+    def _merge_unique(self, primary: list[str], secondary: list[str]) -> list[str]:
+        """Merge two string lists with order preserved."""
+
+        output: list[str] = []
+        seen: set[str] = set()
+        for value in [*primary, *secondary]:
+            key = value.strip().lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            output.append(value)
+        return output

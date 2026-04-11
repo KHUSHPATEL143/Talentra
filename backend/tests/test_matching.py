@@ -6,6 +6,7 @@ import pytest
 
 from app.agents.matching_agent import MatchingAgent
 from app.models.schemas import JobRequirementsPromptResponse, RecommendationResponse, SkillProfile
+from app.services.job_heuristics import JobHeuristicService
 
 
 class FakeEmbeddingService:
@@ -57,7 +58,12 @@ class FakeLLMService:
 async def test_matching_agent_returns_gap_analysis() -> None:
     """The matching agent should produce both matches and missing skills."""
 
-    agent = MatchingAgent(embedding_service=FakeEmbeddingService(), llm_service=FakeLLMService())
+    heuristic_service = JobHeuristicService(["Python", "Kubernetes", "FastAPI"])
+    agent = MatchingAgent(
+        embedding_service=FakeEmbeddingService(),
+        llm_service=FakeLLMService(),
+        job_heuristic_service=heuristic_service,
+    )
     profile = SkillProfile.model_validate(
         {
             "normalized_skills": [
@@ -83,3 +89,47 @@ async def test_matching_agent_returns_gap_analysis() -> None:
 
     assert message.payload["match_result"]["matched_skills"][0]["skill"] == "Python"
     assert message.payload["match_result"]["missing_skills"][0]["skill"] == "Kubernetes"
+
+
+@pytest.mark.asyncio
+async def test_matching_agent_falls_back_to_heuristics_when_llm_unavailable() -> None:
+    """The matching agent should still score a JD when the LLM is unavailable."""
+
+    class FailingLLMService:
+        async def parse_job_requirements(self, job_description: str):
+            raise RuntimeError("provider unavailable")
+
+        async def generate_recommendations(self, candidate_summary, matched_skills, missing_skills):
+            raise RuntimeError("provider unavailable")
+
+    heuristic_service = JobHeuristicService(["Python", "FastAPI", "Docker"])
+    agent = MatchingAgent(
+        embedding_service=FakeEmbeddingService(),
+        llm_service=FailingLLMService(),
+        job_heuristic_service=heuristic_service,
+    )
+    profile = SkillProfile.model_validate(
+        {
+            "normalized_skills": [
+                {
+                    "name": "Python",
+                    "aliases": ["py"],
+                    "category": "Programming Languages",
+                    "subcategory": "General Purpose",
+                    "proficiency": "advanced",
+                    "proficiency_weight": 0.75,
+                    "years_experience": 4,
+                    "inferred": False,
+                    "emerging": False,
+                    "source_skill": "Python",
+                    "confidence": 1.0,
+                    "normalization_tier": "exact"
+                }
+            ]
+        }
+    )
+
+    message = await agent.run(job_id="job-2", skill_profile=profile, job_description="Senior backend engineer with 3 years of experience in Python and Docker.")
+
+    assert message.payload["match_result"]["parsed_requirements"]["required_skills"]
+    assert message.payload["match_result"]["recommendations"]

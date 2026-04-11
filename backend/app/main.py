@@ -28,6 +28,7 @@ from app.models.db import ApiKey
 from app.models.schemas import ErrorResponse
 from app.services.embedding_service import EmbeddingService
 from app.services.file_parser import FileParserService
+from app.services.job_heuristics import JobHeuristicService
 from app.services.llm_service import LLMService
 from app.services.resume_heuristics import ResumeHeuristicService
 from app.services.taxonomy_service import TaxonomyService
@@ -100,10 +101,15 @@ async def lifespan(app: FastAPI):
     file_parser = FileParserService()
     heuristic_service = ResumeHeuristicService()
     taxonomy_service = TaxonomyService(embedding_service=embedding_service, llm_service=llm_service)
+    job_heuristic_service = JobHeuristicService([entry["canonical_name"] for entry in taxonomy_service.taxonomy_entries])
     inference_engine = SkillInferenceEngine.from_yaml(settings.resolved_inference_rules_path)
     parsing_agent = ParsingAgent(file_parser=file_parser, llm_service=llm_service, heuristic_service=heuristic_service)
     normalization_agent = NormalizationAgent(taxonomy_service=taxonomy_service, inference_engine=inference_engine)
-    matching_agent = MatchingAgent(embedding_service=embedding_service, llm_service=llm_service)
+    matching_agent = MatchingAgent(
+        embedding_service=embedding_service,
+        llm_service=llm_service,
+        job_heuristic_service=job_heuristic_service,
+    )
     orchestrator = ResumeOrchestrator(
         parsing_agent=parsing_agent,
         normalization_agent=normalization_agent,
@@ -120,6 +126,7 @@ async def lifespan(app: FastAPI):
     app.state.llm_service = llm_service
     app.state.file_parser = file_parser
     app.state.heuristic_service = heuristic_service
+    app.state.job_heuristic_service = job_heuristic_service
     app.state.taxonomy_service = taxonomy_service
     app.state.inference_engine = inference_engine
     app.state.parsing_agent = parsing_agent
