@@ -6,6 +6,7 @@ import asyncio
 import json
 from typing import Any, TypeVar
 
+from google import genai
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
@@ -21,14 +22,26 @@ SchemaModel = TypeVar("SchemaModel", bound=BaseModel)
 
 
 class LLMService:
-    """Thin async wrapper around OpenAI chat completions with JSON schema outputs."""
+    """Structured-output LLM wrapper supporting OpenAI and Gemini."""
 
     def __init__(self) -> None:
-        """Initialize the async OpenAI client."""
+        """Initialize configured LLM clients."""
 
         settings = get_settings()
         self.settings = settings
-        self.client = AsyncOpenAI(api_key=settings.openai_api_key)
+        self.provider = self._resolve_provider()
+        self.openai_client = AsyncOpenAI(api_key=settings.openai_api_key) if settings.openai_api_key else None
+        self.gemini_client = genai.Client(api_key=settings.gemini_api_key) if settings.gemini_api_key else None
+
+    def _resolve_provider(self) -> str:
+        """Resolve the active LLM provider from config and available keys."""
+
+        configured = (self.settings.llm_provider or "").strip().lower()
+        if configured in {"openai", "gemini"}:
+            return configured
+        if self.settings.gemini_api_key:
+            return "gemini"
+        return "openai"
 
     async def structured_completion(
         self,
@@ -51,10 +64,30 @@ class LLMService:
         user_prompt: str,
         retries: int = 3,
     ) -> dict[str, Any]:
-        """Call the chat completion API with exponential backoff."""
+        """Call the configured LLM API with exponential backoff."""
 
-        if not self.settings.openai_api_key:
-            raise ValueError("OPENAI_API_KEY is required for LLM-powered workflows.")
+        for attempt in range(retries):
+            try:
+                if self.provider == "gemini":
+                    return await self._gemini_chat_json(schema, system_prompt, user_prompt)
+                return await self._openai_chat_json(schema_name, schema, system_prompt, user_prompt)
+            except Exception:
+                if attempt == retries - 1:
+                    raise
+                await asyncio.sleep(2**attempt)
+        return {}
+
+    async def _openai_chat_json(
+        self,
+        schema_name: str,
+        schema: dict[str, Any],
+        system_prompt: str,
+        user_prompt: str,
+    ) -> dict[str, Any]:
+        """Call OpenAI structured outputs."""
+
+        if not self.openai_client or not self.settings.openai_api_key:
+            raise ValueError("OPENAI_API_KEY is required when LLM_PROVIDER=openai.")
 
         response_format = {
             "type": "json_schema",
@@ -64,25 +97,43 @@ class LLMService:
                 "schema": schema,
             },
         }
+        response = await self.openai_client.chat.completions.create(
+            model=self.settings.openai_model,
+            temperature=0,
+            response_format=response_format,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+        content = response.choices[0].message.content or "{}"
+        return json.loads(content)
 
-        for attempt in range(retries):
-            try:
-                response = await self.client.chat.completions.create(
-                    model=self.settings.openai_model,
-                    temperature=0,
-                    response_format=response_format,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                )
-                content = response.choices[0].message.content or "{}"
-                return json.loads(content)
-            except Exception:
-                if attempt == retries - 1:
-                    raise
-                await asyncio.sleep(2**attempt)
-        return {}
+    async def _gemini_chat_json(
+        self,
+        schema: dict[str, Any],
+        system_prompt: str,
+        user_prompt: str,
+    ) -> dict[str, Any]:
+        """Call Gemini structured outputs using JSON schema."""
+
+        if not self.gemini_client or not self.settings.gemini_api_key:
+            raise ValueError("GEMINI_API_KEY is required when LLM_PROVIDER=gemini.")
+
+        def _generate() -> str:
+            response = self.gemini_client.models.generate_content(
+                model=self.settings.gemini_model,
+                contents=f"{system_prompt}\n\n{user_prompt}",
+                config={
+                    "temperature": 0,
+                    "response_mime_type": "application/json",
+                    "response_json_schema": schema,
+                },
+            )
+            return response.text or "{}"
+
+        content = await asyncio.to_thread(_generate)
+        return json.loads(content)
 
     async def extract_candidate_profile(self, resume_text: str) -> CandidateProfile:
         """Extract a structured candidate profile from raw resume text."""

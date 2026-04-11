@@ -31,7 +31,7 @@ Resume Upload / Job Description
 git clone https://github.com/KHUSHPATEL143/Talentra.git
 cd Talentra
 cp .env.example .env
-# Fill in OPENAI_API_KEY and optionally DEFAULT_API_KEY
+# Fill in OPENAI_API_KEY or GEMINI_API_KEY, plus optionally DEFAULT_API_KEY
 docker compose up --build
 # API: http://localhost:8000/docs
 # Frontend: http://localhost:3000
@@ -39,6 +39,7 @@ docker compose up --build
 
 If `DEFAULT_API_KEY` is left blank, the backend seeds a UUID development key at first startup and prints it to the backend logs as `DEV API KEY: ...`.
 If you want the browser frontend to work immediately against protected endpoints, set the same value in both `DEFAULT_API_KEY` and `REACT_APP_API_KEY` before running `docker compose up --build`. You can also paste the printed key into the API key field in the app header after startup.
+To run with Gemini instead of OpenAI, set `LLM_PROVIDER=gemini`, provide `GEMINI_API_KEY`, and optionally override `GEMINI_MODEL`.
 
 ## API Endpoints
 
@@ -212,7 +213,11 @@ pytest tests/ -v
 
 | Variable | Purpose |
 |---|---|
-| `OPENAI_API_KEY` | OpenAI key used for structured extraction, fallback normalization, and recommendations |
+| `OPENAI_API_KEY` | OpenAI key used when `LLM_PROVIDER=openai` |
+| `GEMINI_API_KEY` | Gemini key used when `LLM_PROVIDER=gemini` |
+| `OPENAI_MODEL` | OpenAI model name for structured extraction |
+| `GEMINI_MODEL` | Gemini model name for structured extraction |
+| `LLM_PROVIDER` | Active provider: `openai` or `gemini` |
 | `DATABASE_URL` | Async SQLAlchemy PostgreSQL connection string |
 | `REDIS_URL` | Redis connection string for rate limiting, cache, and batch jobs |
 | `CHROMADB_HOST` | ChromaDB hostname |
