@@ -39,8 +39,11 @@ export default function Profile({ user, apiKey, setApiKey, onSaveKey, onClearKey
   const handlePhotoChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      const url = URL.createObjectURL(file);
-      setPhoto(url);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPhoto(reader.result);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
