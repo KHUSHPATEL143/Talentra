@@ -78,6 +78,8 @@ async def _persist_candidate(
     """Persist candidate and agent traces after a parse pipeline run."""
 
     candidate_payload = orchestrator_state.get("parsed_profile", {})
+    if not candidate_payload:
+        raise ValueError("Cannot persist candidate because parsed_profile is missing.")
     skill_payload = orchestrator_state.get("normalized_profile", {})
     traces = orchestrator_state.get("traces", [])
     candidate = Candidate(
@@ -115,6 +117,19 @@ async def _cache_candidate(redis, candidate: Candidate) -> None:
     await redis.setex(f"candidate:{candidate.id}", settings.redis_cache_ttl_seconds, json.dumps(candidate.profile_json))
 
 
+def _extract_failure_message(state: dict[str, Any]) -> str:
+    """Return the most relevant orchestrator error message."""
+
+    errors = state.get("errors", [])
+    if errors:
+        return errors[-1]
+    traces = state.get("traces", [])
+    for trace in reversed(traces):
+        if trace.get("error"):
+            return str(trace["error"])
+    return "Resume parsing failed before a candidate profile could be created."
+
+
 async def _consume_batch_queue(app, batch_id: str) -> None:
     """Consume a Redis queue for batch parsing and update status keys."""
 
@@ -137,6 +152,8 @@ async def _consume_batch_queue(app, batch_id: str) -> None:
                     mime_type=payload["mime_type"],
                     job_id=payload["file_job_id"],
                 )
+                if not state.get("parsed_profile"):
+                    raise ValueError(_extract_failure_message(state))
                 candidate = await _persist_candidate(session, payload["mime_type"], state)
                 result = {
                     "file_name": payload["file_name"],
@@ -183,6 +200,18 @@ async def parse_resume(
 
     file_bytes, mime_type = await _read_and_validate_file(file)
     state = await request.app.state.orchestrator.run(session=session, file_bytes=file_bytes, mime_type=mime_type)
+    if not state.get("parsed_profile"):
+        raise _structured_http_error(
+            502,
+            "parse_pipeline_failed",
+            _extract_failure_message(state),
+            partial_result={
+                "job_id": state.get("job_id"),
+                "traces": state.get("traces", []),
+                "errors": state.get("errors", []),
+                "partial": state.get("partial", True),
+            },
+        )
     candidate = await _persist_candidate(session, mime_type, state)
     redis = await get_redis()
     await _cache_candidate(redis, candidate)
