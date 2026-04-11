@@ -25,7 +25,7 @@ export default function Hero({ onGetStarted }) {
               Turn Unstructured Resumes Into <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-sky-600">Pure Intelligence.</span>
             </h1>
             <p className="mt-8 text-lg leading-8 text-slate-600">
-              GARUDA leverages high-order LLMs to parse, normalize, and match candidates with unprecedented precision. Stop scanning documents and start making data-driven talent decisions.
+              TALENTRA leverages high-order LLMs to parse, normalize, and match candidates with unprecedented precision. Stop scanning documents and start making data-driven talent decisions.
             </p>
             <div className="mt-10 flex items-center gap-x-6">
               <button

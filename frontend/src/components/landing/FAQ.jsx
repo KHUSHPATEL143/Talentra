@@ -5,7 +5,7 @@ import { Plus, Minus } from "lucide-react";
 const faqs = [
   {
     question: "How accurate is the resume parsing?",
-    answer: "Garuda uses state-of-the-art LLMs (Claude 3.5 & GPT-4o) combined with proprietary extraction logic to achieve 99% accuracy on standard formats and significantly higher accuracy on complex layouts compared to legacy parsers."
+    answer: "Talentra uses state-of-the-art LLMs (Claude 3.5 & GPT-4o) combined with proprietary extraction logic to achieve 99% accuracy on standard formats and significantly higher accuracy on complex layouts compared to legacy parsers."
   },
   {
     question: "Do you support PDF and scanned documents?",
@@ -16,7 +16,7 @@ const faqs = [
     answer: "We map extracted skills to a standardized, hierarchical taxonomy. This ensures that variations like 'React JS' and 'React.js' are treated as the same skill, allowing for consistent matching across your entire database."
   },
   {
-    question: "Can I self-host the Garuda data store?",
+    question: "Can I self-host the Talentra data store?",
     answer: "Our Enterprise plan supports on-premise and VPC deployments for organizations with strict data residency requirements. Contact our sales team for more details."
   }
 ];

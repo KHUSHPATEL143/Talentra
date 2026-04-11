@@ -3,7 +3,7 @@ import { Quote } from "lucide-react";
 
 const testimonials = [
   {
-    content: "Garuda's ability to map our messy resume data into a clean, hierarchical skill taxonomy changed everything. We've cut screening time by 60%.",
+    content: "Talentra's ability to map our messy resume data into a clean, hierarchical skill taxonomy changed everything. We've cut screening time by 60%.",
     author: "Elena Rodriguez",
     role: "Head of Talent, Nexus AI",
     avatar: "ER"
@@ -15,7 +15,7 @@ const testimonials = [
     avatar: "MC"
   },
   {
-    content: "Building an intake center with Garuda was the best tech decision this year. The API is robust and the extraction is flawless.",
+    content: "Building an intake center with Talentra was the best tech decision this year. The API is robust and the extraction is flawless.",
     author: "David Varkey",
     role: "CTO, TalentStream",
     avatar: "DV"

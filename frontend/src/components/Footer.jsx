@@ -11,7 +11,7 @@ export default function Footer() {
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-emerald-400">
                 <Cpu size={24} />
               </div>
-              <span>GARUDA</span>
+              <span>TALENTRA</span>
             </Link>
             <p className="mt-6 text-sm leading-7 text-slate-600 max-w-xs">
               Pioneering the next generation of resume intelligence and talent mapping with high-order LLMs.
@@ -79,7 +79,7 @@ export default function Footer() {
         
         <div className="mt-20 border-t border-slate-100 pt-8 text-center sm:flex sm:items-center sm:justify-between">
           <p className="text-xs leading-5 text-slate-400">
-            &copy; {new Date().getFullYear()} Garuda Intelligence Inc. Built for the Hackathon-3.
+            &copy; {new Date().getFullYear()} Talentra Intelligence Inc. Built for the Hackathon-3.
           </p>
         </div>
       </div>

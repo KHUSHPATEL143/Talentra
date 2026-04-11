@@ -102,7 +102,7 @@ export default function App() {
               <Cpu size={24} />
               <div className="absolute inset-0 animate-pulse rounded-xl bg-emerald-400/20" />
             </div>
-            <span>GARUDA</span>
+            <span>TALENTRA</span>
           </Link>
           
           <div className="flex flex-col gap-4 lg:items-end">

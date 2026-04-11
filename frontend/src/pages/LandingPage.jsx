@@ -46,7 +46,7 @@ export default function LandingPage() {
             <span className="text-emerald-400">hidden in your resumes?</span>
           </motion.h2>
           <p className="mt-6 text-lg text-slate-300">
-            Join 500+ recruitment teams using Garuda to accelerate their talent mapping.
+            Join 500+ recruitment teams using Talentra to accelerate their talent mapping.
           </p>
           <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
             <button

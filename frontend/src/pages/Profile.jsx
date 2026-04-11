@@ -162,7 +162,7 @@ export default function Profile({ user, apiKey, setApiKey, onSaveKey, onClearKey
               Developer Access
             </h2>
             <p className="text-sm text-slate-400 mb-6 leading-relaxed">
-              Manage your API keys for authenticated integration with the Garuda Intelligence Engine.
+              Manage your API keys for authenticated integration with the Talentra Intelligence Engine.
             </p>
             <div className="space-y-4">
               <div className="relative group">

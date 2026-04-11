@@ -48,7 +48,7 @@ export default function AuthModal({ isOpen, onClose, type = "login", onSuccess }
             </h2>
             <p className="mt-2 text-slate-500">
               {isSignUp 
-                ? "Join Garuda and start transforming your recruitment workflow."
+                ? "Join Talentra and start transforming your recruitment workflow."
                 : "Enter your credentials to access your talent intelligence."}
             </p>
           </div>

@@ -12,7 +12,7 @@ export default function Process({ onGetStarted }) {
     },
     {
       name: "AI Extraction",
-      description: "Our high-order LLMs extract skills, experience, and metadata, mapping them to the standard Garuda taxonomy.",
+      description: "Our high-order LLMs extract skills, experience, and metadata, mapping them to the standard Talentra taxonomy.",
       icon: Search,
       color: "text-sky-600",
       bg: "bg-sky-100",
@@ -32,7 +32,7 @@ export default function Process({ onGetStarted }) {
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="text-base font-bold leading-7 text-emerald-600 uppercase tracking-widest">Efficiency</h2>
           <p className="mt-2 font-display text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">
-            How Garuda <span className="text-slate-400">works for you.</span>
+            How Talentra <span className="text-slate-400">works for you.</span>
           </p>
         </div>
         
@@ -68,7 +68,7 @@ export default function Process({ onGetStarted }) {
             className="rounded-3xl bg-slate-100 p-8 text-center max-w-3xl border border-slate-200/50"
           >
             <p className="text-slate-700 italic font-medium leading-relaxed">
-              "Garuda has reduced our initial screening time by over 80%. The accuracy of the skill extraction is far superior to any legacy parser we've used."
+              "Talentra has reduced our initial screening time by over 80%. The accuracy of the skill extraction is far superior to any legacy parser we've used."
             </p>
             <div className="mt-6 flex items-center justify-center gap-3">
               <div className="h-10 w-10 rounded-full bg-slate-300" />

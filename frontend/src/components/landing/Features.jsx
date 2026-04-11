@@ -56,7 +56,7 @@ export default function Features() {
             Everything you need for <span className="text-slate-400">intelligent talent intake.</span>
           </p>
           <p className="mt-6 text-lg leading-8 text-slate-600">
-            Garuda replaces legacy parsing engines with a modern, LLM-orchestrated pipeline that handles the heavy lifting of candidate evaluation.
+            Talentra replaces legacy parsing engines with a modern, LLM-orchestrated pipeline that handles the heavy lifting of candidate evaluation.
           </p>
         </div>
         <div className="mx-auto mt-16 max-w-2xl sm:mt-20 lg:mt-24 lg:max-w-none">
