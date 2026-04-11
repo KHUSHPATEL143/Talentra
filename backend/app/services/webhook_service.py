@@ -6,6 +6,7 @@ import asyncio
 from typing import Any
 
 import httpx
+from sqlalchemy import cast, select, String
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,7 +25,9 @@ class WebhookService:
     async def dispatch_event(self, session: AsyncSession, event_name: str, payload: dict[str, Any]) -> None:
         """Send an event payload to every subscribed webhook."""
 
-        result = await session.execute(select(Webhook).where(Webhook.events.contains([event_name])))
+        result = await session.execute(
+            select(Webhook).where(cast(Webhook.events, String).like(f'%"{event_name}"%'))
+        )
         hooks = list(result.scalars().all())
         if not hooks:
             return
