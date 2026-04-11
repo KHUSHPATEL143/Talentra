@@ -1,4 +1,4 @@
-"""OpenAI structured output wrapper with retry support."""
+"""Structured-output LLM wrappers for candidate and job intelligence."""
 
 from __future__ import annotations
 
@@ -147,6 +147,29 @@ class LLMService:
         user_prompt = (
             "Extract the following fields from the resume text: name, email, phone, location, linkedin, "
             "summary, skills, experience, education, certifications, projects, publications.\n\n"
+            f"RESUME TEXT:\n{resume_text}"
+        )
+        return await self.structured_completion("candidate_profile", CandidateProfile, system_prompt, user_prompt)
+
+    async def extract_candidate_profile_with_hints(
+        self,
+        resume_text: str,
+        heuristic_profile: CandidateProfile,
+    ) -> CandidateProfile:
+        """Extract a candidate profile while preserving deterministic heuristic fields."""
+
+        heuristic_dump = heuristic_profile.model_dump()
+        system_prompt = (
+            "You extract resume data into strict JSON. Handle inconsistent layouts, multi-column or creative CV designs, "
+            "implicit date ranges, and skills mentioned inside work experience or project descriptions. "
+            "You are also given deterministic fields extracted locally via regex/layout parsing. "
+            "Preserve those heuristic values unless the resume clearly contradicts them."
+        )
+        user_prompt = (
+            "Heuristic fields already extracted locally:\n"
+            f"{json.dumps(heuristic_dump, ensure_ascii=False)}\n\n"
+            "Extract the complete candidate profile with: name, email, phone, location, linkedin, summary, skills, "
+            "experience, education, certifications, projects, publications.\n\n"
             f"RESUME TEXT:\n{resume_text}"
         )
         return await self.structured_completion("candidate_profile", CandidateProfile, system_prompt, user_prompt)
