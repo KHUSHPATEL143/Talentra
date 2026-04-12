@@ -7,6 +7,7 @@ from typing import Any
 
 import structlog
 
+from app.core.config import get_settings
 from app.models.schemas import AgentMessage, AgentTrace, CandidateProfile
 from app.services.file_parser import FileParserService
 from app.services.llm_service import LLMService
@@ -29,6 +30,7 @@ class ParsingAgent:
         self.file_parser = file_parser
         self.llm_service = llm_service
         self.heuristic_service = heuristic_service
+        self.settings = get_settings()
 
     async def run(self, job_id: str, file_bytes: bytes, mime_type: str) -> AgentMessage:
         """Parse a resume file into a validated candidate profile."""
@@ -37,14 +39,17 @@ class ParsingAgent:
         logger.info("agent.enter", job_id=job_id, agent_name="parsing_agent")
         raw_text = await self.file_parser.extract_text(file_bytes, mime_type)
         heuristic_profile = self.heuristic_service.extract_profile(raw_text)
-        try:
-            candidate_profile = await self.llm_service.extract_candidate_profile_with_hints(raw_text, heuristic_profile)
-            candidate_profile = self.heuristic_service.merge_profiles(heuristic_profile, candidate_profile)
-        except Exception:
-            if self._has_usable_heuristics(heuristic_profile):
-                candidate_profile = heuristic_profile
-            else:
-                raise
+        if self._should_skip_llm(raw_text, heuristic_profile):
+            candidate_profile = heuristic_profile
+        else:
+            try:
+                candidate_profile = await self.llm_service.extract_candidate_profile_with_hints(raw_text, heuristic_profile)
+                candidate_profile = self.heuristic_service.merge_profiles(heuristic_profile, candidate_profile)
+            except Exception:
+                if self._has_usable_heuristics(heuristic_profile):
+                    candidate_profile = heuristic_profile
+                else:
+                    raise
         quality_score = self._compute_quality_score(candidate_profile)
         latency_ms = int((time.perf_counter() - started_at) * 1000)
         logger.info("agent.exit", job_id=job_id, agent_name="parsing_agent", latency_ms=latency_ms)
@@ -83,5 +88,24 @@ class ParsingAgent:
             or candidate_profile.email
             or candidate_profile.phone
             or candidate_profile.linkedin
+            or candidate_profile.github
             or candidate_profile.skills
         )
+
+    def _should_skip_llm(self, raw_text: str, candidate_profile: CandidateProfile) -> bool:
+        """Return whether deterministic extraction is strong enough to skip the LLM."""
+
+        if not self.settings.parse_heuristic_skip_enabled:
+            return False
+        if len(raw_text.strip()) > self.settings.parse_heuristic_skip_max_chars:
+            return False
+
+        contact_present = bool(candidate_profile.email or candidate_profile.phone or candidate_profile.linkedin or candidate_profile.github)
+        signals = [
+            bool(candidate_profile.name),
+            contact_present,
+            len(candidate_profile.skills) >= self.settings.parse_heuristic_skip_min_skills,
+            bool(candidate_profile.summary),
+            bool(candidate_profile.location.city or candidate_profile.location.country),
+        ]
+        return sum(signals) >= 4

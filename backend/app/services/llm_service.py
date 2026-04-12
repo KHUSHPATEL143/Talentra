@@ -34,18 +34,35 @@ class LLMService:
         settings = get_settings()
         self.settings = settings
         self.provider = self._resolve_provider()
-        self.openai_client = AsyncOpenAI(api_key=settings.openai_api_key) if settings.openai_api_key else None
+        openai_base_url = self._resolve_openai_base_url()
+        self.openai_client = (
+            AsyncOpenAI(
+                api_key=settings.openai_api_key or "lm-studio",
+                base_url=openai_base_url,
+            )
+            if settings.openai_api_key or openai_base_url
+            else None
+        )
         self.gemini_client = genai.Client(api_key=settings.gemini_api_key) if settings.gemini_api_key and genai else None
 
     def _resolve_provider(self) -> str:
         """Resolve the active LLM provider from config and available keys."""
 
         configured = (self.settings.llm_provider or "").strip().lower()
-        if configured in {"openai", "gemini"}:
+        if configured in {"openai", "gemini", "lmstudio"}:
             return configured
         if self.settings.gemini_api_key:
             return "gemini"
         return "openai"
+
+    def _resolve_openai_base_url(self) -> str | None:
+        """Resolve the OpenAI-compatible base URL used for self-hosted providers."""
+
+        if self.settings.openai_base_url.strip():
+            return self.settings.openai_base_url.strip()
+        if self.provider == "lmstudio":
+            return "http://127.0.0.1:1234/v1"
+        return None
 
     async def structured_completion(
         self,
@@ -90,8 +107,8 @@ class LLMService:
     ) -> dict[str, Any]:
         """Call OpenAI structured outputs."""
 
-        if not self.openai_client or not self.settings.openai_api_key:
-            raise ValueError("OPENAI_API_KEY is required when LLM_PROVIDER=openai.")
+        if not self.openai_client:
+            raise ValueError("OPENAI_API_KEY or OPENAI_BASE_URL is required when LLM_PROVIDER=openai or lmstudio.")
 
         response_format = {
             "type": "json_schema",
@@ -151,7 +168,7 @@ class LLMService:
             "Return empty strings or empty arrays when a field is absent."
         )
         user_prompt = (
-            "Extract the following fields from the resume text: name, email, phone, location, linkedin, "
+            "Extract the following fields from the resume text: name, email, phone, location, linkedin, github, "
             "summary, skills, experience, education, certifications, projects, publications.\n\n"
             f"RESUME TEXT:\n{resume_text}"
         )
@@ -174,7 +191,7 @@ class LLMService:
         user_prompt = (
             "Heuristic fields already extracted locally:\n"
             f"{json.dumps(heuristic_dump, ensure_ascii=False)}\n\n"
-            "Extract the complete candidate profile with: name, email, phone, location, linkedin, summary, skills, "
+            "Extract the complete candidate profile with: name, email, phone, location, linkedin, github, summary, skills, "
             "experience, education, certifications, projects, publications.\n\n"
             f"RESUME TEXT:\n{resume_text}"
         )

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BatchUploadTable from "../components/BatchUploadTable";
 import FileDropzone from "../components/FileDropzone";
-import { parseBatch, parseResume } from "../services/api";
+import { cacheParseResult, getApiErrorDetails, parseBatch, parseResume } from "../services/api";
 
 export default function Upload() {
   const [singleFile, setSingleFile] = useState(null);
@@ -13,13 +13,19 @@ export default function Upload() {
 
   const parseMutation = useMutation({
     mutationFn: () => parseResume(singleFile),
-    onSuccess: (data) => navigate(`/candidates/${data.candidate_id}`)
+    onSuccess: (data) => {
+      cacheParseResult(data.candidate_id, data);
+      navigate(`/candidates/${data.candidate_id}`, { state: { parseResult: data } });
+    }
   });
 
   const batchMutation = useMutation({
     mutationFn: () => parseBatch(batchFiles),
     onSuccess: (data) => setBatchJobId(data.job_id)
   });
+
+  const singleError = parseMutation.error ? getApiErrorDetails(parseMutation.error) : null;
+  const batchError = batchMutation.error ? getApiErrorDetails(batchMutation.error) : null;
 
   return (
     <div className="space-y-8">
@@ -40,6 +46,13 @@ export default function Upload() {
             <p className="text-sm text-slate-500">Parse and normalize a single candidate synchronously.</p>
           </div>
           <FileDropzone multiple={false} onFileAccepted={(files) => setSingleFile(files[0])} />
+          {singleError ? (
+            <div className="rounded-3xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              <p className="font-semibold">Single upload failed</p>
+              <p className="mt-1">{singleError.message}</p>
+              {singleError.traceId ? <p className="mt-1 text-xs text-red-600">Trace ID: {singleError.traceId}</p> : null}
+            </div>
+          ) : null}
           <button
             type="button"
             disabled={!singleFile || parseMutation.isPending}
@@ -56,6 +69,13 @@ export default function Upload() {
             <p className="text-sm text-slate-500">Queue up to 50 resumes and monitor progress in real time.</p>
           </div>
           <FileDropzone multiple onFileAccepted={(files) => setBatchFiles(files)} />
+          {batchError ? (
+            <div className="rounded-3xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              <p className="font-semibold">Batch queue failed</p>
+              <p className="mt-1">{batchError.message}</p>
+              {batchError.traceId ? <p className="mt-1 text-xs text-red-600">Trace ID: {batchError.traceId}</p> : null}
+            </div>
+          ) : null}
           <button
             type="button"
             disabled={!batchFiles.length || batchMutation.isPending}

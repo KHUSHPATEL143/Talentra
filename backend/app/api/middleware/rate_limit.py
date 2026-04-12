@@ -21,7 +21,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if request.method.upper() == "OPTIONS":
             return await call_next(request)
 
-        if request.url.path in {"/docs", "/openapi.json", "/redoc"}:
+        if request.url.path in {"/docs", "/openapi.json", "/redoc", "/metrics"}:
             return await call_next(request)
 
         api_key = getattr(request.state, "api_key", None)

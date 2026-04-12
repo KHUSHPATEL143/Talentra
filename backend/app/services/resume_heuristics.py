@@ -69,6 +69,7 @@ class ResumeHeuristicService:
         email = self._extract_email(raw_text)
         phone = self._extract_phone(raw_text)
         linkedin = self._extract_linkedin(raw_text)
+        github = self._extract_github(raw_text)
         name = self._extract_name(lines)
         location = self._extract_location(lines)
         summary = self._extract_summary(raw_text)
@@ -79,6 +80,7 @@ class ResumeHeuristicService:
             phone=phone,
             location=location,
             linkedin=linkedin,
+            github=github,
             summary=summary,
             skills=skills,
         )
@@ -89,7 +91,7 @@ class ResumeHeuristicService:
         merged = llm_profile.model_dump()
         heuristic_dump = heuristic.model_dump()
 
-        for key in ("name", "email", "phone", "linkedin", "summary"):
+        for key in ("name", "email", "phone", "linkedin", "github", "summary"):
             if not merged.get(key) and heuristic_dump.get(key):
                 merged[key] = heuristic_dump[key]
 
@@ -125,6 +127,15 @@ class ResumeHeuristicService:
         match = re.search(r"(https?://)?(www\.)?linkedin\.com/[^\s|]+", text, flags=re.IGNORECASE)
         if match:
             value = match.group(0)
+            return value if value.startswith("http") else f"https://{value}"
+        return ""
+
+    def _extract_github(self, text: str) -> str:
+        """Extract a GitHub URL or handle."""
+
+        match = re.search(r"(https?://)?(www\.)?github\.com/[^\s|]+", text, flags=re.IGNORECASE)
+        if match:
+            value = match.group(0).rstrip(".,);")
             return value if value.startswith("http") else f"https://{value}"
         return ""
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from prometheus_client import Counter, Histogram
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 
 AGENT_RUNS = Counter(
     "garuda_agent_runs_total",
@@ -32,3 +32,9 @@ def record_api_request(route: str, method: str, status_code: int) -> None:
     """Record API request metrics."""
 
     API_REQUESTS.labels(route=route, method=method, status_code=str(status_code)).inc()
+
+
+def export_metrics() -> tuple[bytes, str]:
+    """Render the current Prometheus registry into an HTTP response payload."""
+
+    return generate_latest(), CONTENT_TYPE_LATEST

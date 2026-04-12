@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncGenerator
+from pathlib import Path
+
+from alembic import command
+from alembic.config import Config
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -23,7 +28,23 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_database() -> None:
-    """Create database tables if they do not already exist."""
+    """Apply Alembic migrations, falling back to direct table creation when needed."""
+
+    alembic_ini_path = settings.resolved_alembic_ini_path
+    if alembic_ini_path.exists():
+        try:
+            await asyncio.to_thread(_run_migrations, alembic_ini_path)
+            return
+        except Exception:
+            pass
 
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+
+
+def _run_migrations(alembic_ini_path: Path) -> None:
+    """Run Alembic migrations up to head using the configured ini file."""
+
+    config = Config(str(alembic_ini_path))
+    config.set_main_option("sqlalchemy.url", settings.database_url)
+    command.upgrade(config, "head")

@@ -20,7 +20,9 @@ class ApiKeyAuthMiddleware(BaseHTTPMiddleware):
         """Initialize middleware with pass-through routes."""
 
         super().__init__(app)
-        self.open_paths = {"/docs", "/openapi.json", "/redoc"}
+        self.open_paths = {"/docs", "/openapi.json", "/redoc", "/metrics"}
+        self.public_prefixes = ("/api/v1/auth/", "/api/v1/board/", "/api/v1/forms/public/")
+        self.jwt_prefixes = ("/api/v1/jobs", "/api/v1/employees", "/api/v1/recruiters", "/api/v1/forms", "/api/v1/pool")
 
     async def dispatch(self, request: Request, call_next):
         """Authenticate the request and attach API key metadata to request state."""
@@ -29,6 +31,12 @@ class ApiKeyAuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         if request.url.path in self.open_paths:
+            return await call_next(request)
+
+        authorization = request.headers.get("Authorization", "")
+        if request.url.path.startswith(self.public_prefixes):
+            return await call_next(request)
+        if authorization.startswith("Bearer ") and request.url.path.startswith(self.jwt_prefixes):
             return await call_next(request)
 
         header_value = request.headers.get("X-API-Key")
