@@ -1,4 +1,4 @@
-# GARUDA Resume Intelligence Platform
+# Talentra Resume Intelligence Platform
 
 GARUDA is a multi-agent resume intelligence system built for hackathon-grade speed without giving up production-style architecture. It ingests resumes in PDF, DOCX, and TXT formats, extracts structured candidate data with OpenAI structured outputs, normalizes raw skills against a seeded taxonomy, and performs semantic candidate-to-job matching with a weighted multi-agent pipeline.
 
