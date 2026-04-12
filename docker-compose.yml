@@ -6,6 +6,8 @@ services:
       - .env
     ports:
       - "8000:8000"
+    volumes:
+      - resume_storage:/app/storage
     depends_on:
       postgres:
         condition: service_healthy
@@ -35,7 +37,7 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1 >/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -89,3 +91,4 @@ volumes:
   postgres_data:
   redis_data:
   chroma_data:
+  resume_storage:

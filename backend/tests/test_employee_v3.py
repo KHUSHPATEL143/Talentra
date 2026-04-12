@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.api.routes.employees_v3 import _verify_claimed_skills
+from app.agents.career_coach_agent import CareerCoachAgent
 from app.agents.role_matcher import RoleMatcher
 
 
@@ -131,3 +132,92 @@ async def test_score_candidate_for_job_returns_employee_preview() -> None:
     assert ranking.location_status == "local"
     assert ranking.final_score > 70
     assert "React" in ranking.top_skills
+
+
+@pytest.mark.asyncio
+async def test_career_coach_agent_recommends_missing_skills() -> None:
+    """Career coach should recommend repeated missing skills across matching jobs."""
+
+    matcher = RoleMatcher(embedding_service=FakeEmbeddingService(), geocoding_service=SimpleNamespace(haversine_km=lambda *args: 8.0))
+    candidate = matcher.build_candidate_context(
+        candidate_id="employee-1",
+        name="Employee One",
+        location_label="Ahmedabad, India",
+        coordinates=(23.03, 72.58),
+        open_to_relocation=False,
+        verified_skills=[{"canonical_name": "React", "verification_tier": "VERIFIED", "years": 3}],
+        total_years=4,
+        projects=[{"name": "React Commerce", "description": "React storefront", "technologies": ["React"]}],
+    )
+
+    class FakeSession:
+        def __init__(self):
+            self.saved = None
+
+        async def execute(self, _query):
+            jobs = [
+                SimpleNamespace(
+                    id="job-1",
+                    title="Frontend Engineer",
+                    company="Acme",
+                    description="React and TypeScript role",
+                    radius_km=50,
+                    accept_relocation=True,
+                    remote=False,
+                    visibility="public",
+                    status="active",
+                    lat=23.0225,
+                    lng=72.5714,
+                    required_skills=[{"skill": "React", "min_years": 2, "weight": 1.0}, {"skill": "TypeScript", "min_years": 1, "weight": 1.0}],
+                    preferred_skills=[],
+                    experience_min=2,
+                    auto_shortlist_threshold=70.0,
+                    min_coverage_threshold=0.0,
+                    created_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+                ),
+                SimpleNamespace(
+                    id="job-2",
+                    title="UI Engineer",
+                    company="Beta",
+                    description="React with TypeScript and design systems",
+                    radius_km=50,
+                    accept_relocation=True,
+                    remote=False,
+                    visibility="public",
+                    status="active",
+                    lat=23.0225,
+                    lng=72.5714,
+                    required_skills=[{"skill": "React", "min_years": 2, "weight": 1.0}, {"skill": "TypeScript", "min_years": 1, "weight": 1.0}],
+                    preferred_skills=[],
+                    experience_min=2,
+                    auto_shortlist_threshold=70.0,
+                    min_coverage_threshold=0.0,
+                    created_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+                ),
+            ]
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: jobs))
+
+        async def scalar(self, _query):
+            return self.saved
+
+        def add(self, value):
+            self.saved = value
+
+        async def commit(self):
+            return None
+
+        async def refresh(self, _value):
+            return None
+
+    session = FakeSession()
+    coach = CareerCoachAgent(role_matcher=matcher)
+    suggestion = await coach.run(
+        session=session,
+        employee=SimpleNamespace(id="emp-1"),
+        social=SimpleNamespace(),
+        verified=SimpleNamespace(),
+        candidate_context=candidate,
+    )
+
+    assert suggestion.recommended_skills
+    assert suggestion.recommended_skills[0]["skill"] == "TypeScript"

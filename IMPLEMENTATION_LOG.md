@@ -115,6 +115,17 @@ Before marking any slice done, verify:
 - Global logout action for JWT-authenticated TalentOS sessions
 - Match hub page that now lists recruiter-posted jobs instead of only the old V2 ad-hoc match view
 - Manual-vs-paste recruiter job creation mode so structured skill input is not silently ignored
+- Employee resume generation with stored PDF and DOCX artifacts from profile-backed templates
+- Employee one-click apply flow that stores candidate applications against posted jobs
+- Employee application tracker showing pipeline stage and stored match score
+- Recruiter pipeline merge that now shows direct employee applications even when live matcher filters them out
+- Recruiter pipeline support for anonymous public-form submissions using application-id based stage movement
+- Public intake form endpoints now behave as truly public routes without requiring an API key
+- Recruiter intake-form response listing so recruiters can review recent submissions from the form builder
+- Recruiter pipeline CSV export for one-click candidate export per job
+- Recruiter pipeline compare mode for side-by-side score, skill, and gap review
+- Persistent resume storage volume mounted into the backend container for generated artifacts
+- Deterministic mock-data seeding script for 100 employee users plus linked candidate pool rows, social profiles, verified skills, and login manifest output
 
 ### Validation And Stability Work Already Done
 - Pytest setup and import-path fixes
@@ -150,6 +161,18 @@ Before marking any slice done, verify:
   - employee-facing verified profile and job-board flow
 - Candidate profile overview now surfaces both LinkedIn and GitHub links directly in the contact panel
 - Candidate profile overview now includes a top-projects section so project evidence is visible without leaving the main tab
+- Employee dashboard now covers the full post-verification loop:
+  - generate resume
+  - apply to public role
+  - track application stage
+- Recruiter-side pipeline now correctly merges:
+  - pool matches
+  - direct employee applications
+  - public intake-form submissions
+- Recruiter pipeline UX now includes:
+  - CSV export
+  - compare selection for up to 3 candidates
+  - recent public form submission review inside the form builder
 
 ### End-To-End Runtime Validation
 - Real single-resume parse flow is working end to end through frontend and backend
@@ -181,6 +204,11 @@ Before marking any slice done, verify:
 - Measure and improve normalization latency on larger resumes
 - Re-parse one resume containing a GitHub link and confirm the candidate profile stores and displays it correctly
 - Verify project cards render well for resumes with 0, 1, and multiple extracted projects
+- Re-check recruiter pipeline UX in browser for:
+  - direct employee apply rows
+  - public form rows
+  - stage movement from the Kanban board
+- Add public board endpoints and optional employee-side unauthenticated browsing flow
 
 ### PRD Alignment Improvements
 - Strengthen webhook delivery validation with real test endpoints
@@ -198,9 +226,18 @@ Before marking any slice done, verify:
   - create Ahmedabad React role
   - run matching
   - show ranked local-first pipeline
+- Seed 100 realistic mock employees so recruiter matching, employee login, and clickable profile links can be demoed without manual data entry
 - Prepare judging explanation, feature summary, and architecture walkthrough
 
 ## Notes
 
 - The project is already beyond scaffolding and is now in validation-and-refinement mode.
 - Current priority is not creating new modules blindly, but making sure the implemented PRD features behave correctly on real inputs.
+- Live validation on April 12, 2026 confirmed:
+  - recruiter job creation worked
+  - public form creation and unauthenticated public form fetch worked
+  - public form submission appeared in recruiter candidates with application-id based stage updates
+  - direct employee apply appeared in recruiter candidates even with a 0.0 fallback score
+  - recruiter form response listing returned the public applicant correctly
+  - recruiter candidate CSV export included both the public applicant and the direct-apply employee
+  - frontend and backend containers both reached healthy status after the latest rebuild

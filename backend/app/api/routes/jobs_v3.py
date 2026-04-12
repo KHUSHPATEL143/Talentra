@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import csv
+import io
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +21,7 @@ from app.models.schemas_v3 import (
     JobPostingListResponse,
     JobPostingPatchRequest,
     JobPostingResponse,
+    RankedCandidate,
     RankedCandidateListResponse,
     RunMatchingResponse,
 )
@@ -56,6 +61,81 @@ def _job_response(record: JobPosting) -> JobPostingResponse:
         application_deadline=record.application_deadline,
         created_at=record.created_at,
     )
+
+
+def _application_pipeline_identifier(application: CandidateApplication) -> str:
+    """Return the stable recruiter-facing identifier for one pipeline row."""
+
+    return application.employee_id or application.candidate_id or application.id
+
+
+def _application_ranked_candidate(application: CandidateApplication, job: JobPosting) -> RankedCandidate:
+    """Build a ranked-candidate payload from a persisted pipeline application."""
+
+    match_payload = dict(application.match_result or {})
+    score_breakdown = match_payload.get("score_breakdown") or {
+        "skill_score": 0.0,
+        "experience_score": 0.0,
+        "project_score": 0.0,
+        "verification_score": float(match_payload.get("verification_score", 0.0) or 0.0),
+    }
+    location_status = str(match_payload.get("location_status") or ("remote" if job.remote else "local"))
+    if location_status not in {"local", "relocation", "remote"}:
+        location_status = "remote" if job.remote else "local"
+
+    candidate_data = application.candidate_data or {}
+    return RankedCandidate.model_validate(
+        {
+            "candidate_id": _application_pipeline_identifier(application),
+            "job_id": job.id,
+            "final_score": round(float(application.final_score or match_payload.get("final_score", 0.0) or 0.0), 2),
+            "grade": str(match_payload.get("grade") or ("Pending" if application.source == "form" else "F")),
+            "location_status": location_status,
+            "distance_km": match_payload.get("distance_km"),
+            "pipeline_stage": application.pipeline_stage,
+            "candidate_name": str(
+                match_payload.get("candidate_name")
+                or candidate_data.get("employee_name")
+                or candidate_data.get("name")
+                or "New applicant"
+            ),
+            "location_label": str(match_payload.get("location_label") or candidate_data.get("location") or ""),
+            "top_skills": list(match_payload.get("top_skills", [])),
+            "verification_score": float(match_payload.get("verification_score", 0.0) or 0.0),
+            "skill_breakdown": list(match_payload.get("skill_breakdown", [])),
+            "missing_required": list(match_payload.get("missing_required", [])),
+            "strongest_projects": list(match_payload.get("strongest_projects", [])),
+            "score_breakdown": score_breakdown,
+            "recommendation": str(
+                match_payload.get("recommendation")
+                or (
+                    "Application received from the public intake form and waiting for recruiter review."
+                    if application.source == "form"
+                    else "Application received and waiting for recruiter review."
+                )
+            ),
+        }
+    )
+
+
+def _merge_rankings_with_applications(
+    job: JobPosting,
+    rankings: list[RankedCandidate],
+    applications: list[CandidateApplication],
+) -> list[RankedCandidate]:
+    """Combine live matcher output with persisted recruiter pipeline applications."""
+
+    merged = {ranking.candidate_id: ranking for ranking in rankings}
+    for application in applications:
+        pipeline_identifier = _application_pipeline_identifier(application)
+        ranking = merged.get(pipeline_identifier)
+        if ranking is None:
+            merged[pipeline_identifier] = _application_ranked_candidate(application, job)
+            continue
+        ranking.pipeline_stage = application.pipeline_stage
+    items = list(merged.values())
+    items.sort(key=lambda item: (item.location_status != "local", -(item.final_score or 0.0), item.candidate_name.lower()))
+    return items
 
 
 @router.post(
@@ -223,20 +303,81 @@ async def list_job_candidates(
     if record is None:
         raise HTTPException(status_code=404, detail={"error": "job_not_found", "message": "Job posting not found."})
     rankings = await request.app.state.role_matcher.run(session, record)
-    application_rows = {
-        row.candidate_id: row
-        for row in list((await session.execute(select(CandidateApplication).where(CandidateApplication.job_id == job_id))).scalars().all())
-        if row.candidate_id
-    }
-    for ranking in rankings:
-        application = application_rows.get(ranking.candidate_id)
-        if application is not None:
-            ranking.pipeline_stage = application.pipeline_stage
+    application_rows = list((await session.execute(select(CandidateApplication).where(CandidateApplication.job_id == job_id))).scalars().all())
+    rankings = _merge_rankings_with_applications(record, rankings, application_rows)
     if stage is not None:
         rankings = [item for item in rankings if item.pipeline_stage == stage]
     if min_score is not None:
         rankings = [item for item in rankings if item.final_score >= min_score]
     return RankedCandidateListResponse(items=rankings, total=len(rankings))
+
+
+@router.get(
+    "/jobs/{job_id}/candidates/export",
+    summary="Export recruiter candidates",
+    description="Download the recruiter pipeline candidates for one job as CSV.",
+    responses={404: {"model": ErrorResponse}},
+)
+async def export_job_candidates(
+    request: Request,
+    job_id: str,
+    recruiter: Recruiter = Depends(require_recruiter),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Export recruiter candidates for a job as a CSV attachment."""
+
+    record = await session.scalar(select(JobPosting).where(JobPosting.id == job_id, JobPosting.recruiter_id == recruiter.id))
+    if record is None:
+        raise HTTPException(status_code=404, detail={"error": "job_not_found", "message": "Job posting not found."})
+
+    rankings = await request.app.state.role_matcher.run(session, record)
+    application_rows = list((await session.execute(select(CandidateApplication).where(CandidateApplication.job_id == job_id))).scalars().all())
+    merged = _merge_rankings_with_applications(record, rankings, application_rows)
+    sources = {_application_pipeline_identifier(application): application.source for application in application_rows}
+
+    buffer = io.StringIO()
+    writer = csv.DictWriter(
+        buffer,
+        fieldnames=[
+            "candidate_id",
+            "candidate_name",
+            "pipeline_stage",
+            "final_score",
+            "grade",
+            "location_status",
+            "distance_km",
+            "location_label",
+            "top_skills",
+            "missing_required",
+            "source",
+            "recommendation",
+        ],
+    )
+    writer.writeheader()
+    for item in merged:
+        writer.writerow(
+            {
+                "candidate_id": item.candidate_id,
+                "candidate_name": item.candidate_name,
+                "pipeline_stage": item.pipeline_stage,
+                "final_score": item.final_score,
+                "grade": item.grade,
+                "location_status": item.location_status,
+                "distance_km": item.distance_km or "",
+                "location_label": item.location_label,
+                "top_skills": ", ".join(item.top_skills),
+                "missing_required": ", ".join(item.missing_required),
+                "source": sources.get(item.candidate_id, "pool"),
+                "recommendation": item.recommendation,
+            }
+        )
+
+    file_name = f"{record.title.strip().lower().replace(' ', '-') or 'job'}-candidates.csv"
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
+    )
 
 
 @router.delete(
@@ -286,7 +427,9 @@ async def update_candidate_stage(
     application = await session.scalar(
         select(CandidateApplication).where(
             CandidateApplication.job_id == job_id,
-            CandidateApplication.candidate_id == candidate_id,
+            (CandidateApplication.id == candidate_id)
+            | (CandidateApplication.candidate_id == candidate_id)
+            | (CandidateApplication.employee_id == candidate_id),
         )
     )
     if application is None:

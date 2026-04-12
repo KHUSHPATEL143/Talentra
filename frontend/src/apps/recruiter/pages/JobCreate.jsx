@@ -145,6 +145,7 @@ export default function JobCreate() {
             <button type="submit" className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white">
               {createMutation.isPending ? "Creating..." : mode === "paste" ? "Create Job From JD" : "Create Manual Job"}
             </button>
+            <p className="text-xs text-slate-500">After creating the job, open the form builder to create a public intake link.</p>
           </div>
         </section>
       </form>

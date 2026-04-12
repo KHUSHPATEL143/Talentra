@@ -79,12 +79,21 @@ export function getApiErrorDetails(error) {
   }
 
   const payload = error.response?.data;
+  const nestedDetail = payload?.detail;
   if (payload?.message) {
     return {
       code: payload.error || fallback.code,
       message: payload.message,
       traceId: payload.trace_id || "",
       partialResult: payload.partial_result || null
+    };
+  }
+  if (nestedDetail?.message) {
+    return {
+      code: nestedDetail.error || fallback.code,
+      message: nestedDetail.message,
+      traceId: payload?.trace_id || "",
+      partialResult: payload?.partial_result || null
     };
   }
 
@@ -215,6 +224,103 @@ export async function listEmployeeJobs() {
   return response.data;
 }
 
+export async function syncEmployeeSocialProfiles() {
+  const response = await api.post("/employee/social-sync");
+  return response.data;
+}
+
+export async function getEmployeeCareerCoach() {
+  const response = await api.get("/employee/career-coach");
+  return response.data;
+}
+
+export async function getEmployeeJobMatch(jobId) {
+  const response = await api.get(`/employee/match/${jobId}`);
+  return response.data;
+}
+
+export async function generateEmployeeResume(payload) {
+  const response = await api.post("/employee/resume/generate", payload);
+  return response.data;
+}
+
+export async function listEmployeeResumes() {
+  const response = await api.get("/employee/resumes");
+  return response.data;
+}
+
+export async function getEmployeeResume(resumeId) {
+  const response = await api.get(`/employee/resume/${resumeId}`);
+  return response.data;
+}
+
+export async function downloadEmployeeResume(resumeId, format) {
+  const response = await api.get(`/employee/resume/${resumeId}/download/${format}`, {
+    responseType: "blob"
+  });
+  const blob = new Blob([response.data], {
+    type: format === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `talentos-resume-${resumeId}.${format}`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+export async function applyToEmployeeJob(jobId, payload) {
+  const response = await api.post(`/employee/apply/${jobId}`, payload);
+  return response.data;
+}
+
+export async function listEmployeeApplications() {
+  const response = await api.get("/employee/applications");
+  return response.data;
+}
+
+export async function createIntakeForm(jobId, payload) {
+  const response = await api.post(`/jobs/${jobId}/forms`, payload);
+  return response.data;
+}
+
+export async function getIntakeForm(jobId) {
+  const response = await api.get(`/jobs/${jobId}/forms`);
+  return response.data;
+}
+
+export async function getIntakeFormResponses(formId) {
+  const response = await api.get(`/forms/${formId}/responses`);
+  return response.data;
+}
+
+export async function getPublicIntakeForm(slug) {
+  const response = await api.get(`/public/forms/${slug}`);
+  return response.data;
+}
+
+export async function submitPublicIntakeForm(slug, payload) {
+  const response = await api.post(`/public/forms/${slug}/submit`, payload);
+  return response.data;
+}
+
+export async function listPoolCandidates(params = {}) {
+  const response = await api.get("/pool/candidates", { params });
+  return response.data;
+}
+
+export async function requestPoolAccess(employeeId, payload) {
+  const response = await api.post(`/pool/request/${employeeId}`, payload);
+  return response.data;
+}
+
+export async function getRecruiterAnalytics() {
+  const response = await api.get("/analytics/overview");
+  return response.data;
+}
+
 export async function createRecruiterJob(payload) {
   const response = await api.post("/jobs", payload);
   return response.data;
@@ -238,6 +344,21 @@ export async function runRecruiterMatching(jobId) {
 export async function getRecruiterCandidates(jobId, params = {}) {
   const response = await api.get(`/jobs/${jobId}/candidates`, { params });
   return response.data;
+}
+
+export async function downloadRecruiterCandidatesCsv(jobId) {
+  const response = await api.get(`/jobs/${jobId}/candidates/export`, {
+    responseType: "blob"
+  });
+  const blob = new Blob([response.data], { type: "text/csv;charset=utf-8" });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `job-${jobId}-candidates.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
 }
 
 export async function updateRecruiterCandidateStage(jobId, candidateId, payload) {

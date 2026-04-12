@@ -2,7 +2,9 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import CandidatePipeline from "./apps/recruiter/pages/CandidatePipeline";
+import IntakeFormBuilder from "./apps/recruiter/pages/IntakeFormBuilder";
 import JobCreate from "./apps/recruiter/pages/JobCreate";
+import PublicApplyForm from "./apps/recruiter/pages/PublicApplyForm";
 import RecruiterConsole from "./apps/recruiter/pages/RecruiterConsole";
 import EmployeeConsole from "./apps/employee/pages/EmployeeConsole";
 import CandidateProfile from "./pages/CandidateProfile";
@@ -125,8 +127,10 @@ export default function App() {
           <Route path="/taxonomy" element={<TaxonomyPage />} />
           <Route path="/talentos/recruiter" element={<RecruiterConsole />} />
           <Route path="/talentos/recruiter/jobs/new" element={<JobCreate />} />
+          <Route path="/talentos/recruiter/jobs/:jobId/forms" element={<IntakeFormBuilder />} />
           <Route path="/talentos/recruiter/jobs/:jobId/pipeline" element={<CandidatePipeline />} />
           <Route path="/talentos/employee" element={<EmployeeConsole />} />
+          <Route path="/apply/:slug" element={<PublicApplyForm />} />
         </Routes>
       </main>
     </div>

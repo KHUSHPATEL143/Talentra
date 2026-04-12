@@ -394,6 +394,194 @@ class EmployeeJobBoardResponse(BaseModel):
     total: int = 0
 
 
+class SocialSyncResponse(BaseModel):
+    """Employee social-sync response payload."""
+
+    scrape_status: str
+    github: dict[str, Any] = Field(default_factory=dict)
+    linkedin: dict[str, Any] = Field(default_factory=dict)
+    leetcode: dict[str, Any] = Field(default_factory=dict)
+
+
+class CareerSuggestionResponse(BaseModel):
+    """Employee-facing career coach payload."""
+
+    recommended_skills: list[dict[str, Any]] = Field(default_factory=list)
+    top_jobs: list[dict[str, Any]] = Field(default_factory=list)
+    score_trajectories: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ResumeGenerateRequest(BaseModel):
+    """Employee request to generate a resume artifact."""
+
+    template: Literal["classic", "modern", "technical", "academic"] = "classic"
+    format: Literal["pdf", "docx", "both"] = "both"
+
+
+class ResumeArtifactResponse(BaseModel):
+    """Generated resume metadata and download endpoints."""
+
+    resume_id: str
+    template_name: str
+    pdf_url: str | None = None
+    docx_url: str | None = None
+    public_url: str | None = None
+    created_at: datetime
+
+
+class ResumeArtifactListResponse(BaseModel):
+    """Collection of generated resumes owned by the employee."""
+
+    items: list[ResumeArtifactResponse] = Field(default_factory=list)
+    total: int = 0
+
+
+class EmployeeApplyRequest(BaseModel):
+    """Employee one-click apply payload."""
+
+    cover_note: str = ""
+    resume_id: str | None = None
+
+
+class EmployeeApplicationItem(BaseModel):
+    """Employee-facing application tracker row."""
+
+    application_id: str
+    job_id: str
+    job_title: str
+    company: str
+    applied_at: datetime
+    pipeline_stage: str
+    match_score: float = 0.0
+    grade: str = ""
+    source: str = "direct_apply"
+    cover_note: str = ""
+
+
+class EmployeeApplicationListResponse(BaseModel):
+    """Employee application tracker payload."""
+
+    items: list[EmployeeApplicationItem] = Field(default_factory=list)
+    total: int = 0
+
+
+class IntakeFormField(BaseModel):
+    """Recruiter-configurable intake field."""
+
+    key: str
+    label: str
+    field_type: Literal["text", "textarea", "dropdown", "multi_select", "yes_no", "location", "file"] = "text"
+    required: bool = False
+    options: list[str] = Field(default_factory=list)
+
+
+class IntakeFormCreateRequest(BaseModel):
+    """Create or replace a recruiter intake form."""
+
+    fields: list[IntakeFormField] = Field(default_factory=list)
+
+
+class IntakeFormResponse(BaseModel):
+    """Recruiter or public view of an intake form."""
+
+    id: str
+    job_id: str
+    public_slug: str
+    response_count: int
+    fields: list[IntakeFormField] = Field(default_factory=list)
+
+
+class RecruiterFormResponseItem(BaseModel):
+    """Recruiter-visible form submission row."""
+
+    form_response_id: str
+    application_id: str | None = None
+    candidate_name: str = ""
+    email: str = ""
+    location: str = ""
+    submitted_at: datetime
+    pipeline_stage: str = "new"
+    match_score: float = 0.0
+    response_preview: dict[str, Any] = Field(default_factory=dict)
+
+
+class RecruiterFormResponseListResponse(BaseModel):
+    """Recruiter-facing list of intake-form submissions."""
+
+    items: list[RecruiterFormResponseItem] = Field(default_factory=list)
+    total: int = 0
+
+
+class PublicFormSubmissionRequest(BaseModel):
+    """Public candidate submission payload for an intake form."""
+
+    name: str = Field(min_length=1)
+    email: EmailStr
+    phone: str = ""
+    location: str = ""
+    open_to_relocation: bool = False
+    github_url: str = ""
+    linkedin_url: str = ""
+    answers: dict[str, Any] = Field(default_factory=dict)
+
+
+class PublicFormSubmissionResponse(BaseModel):
+    """Public intake submission confirmation."""
+
+    form_id: str
+    application_id: str
+    submitted: bool = True
+
+
+class PoolCandidateResponse(BaseModel):
+    """Recruiter-visible candidate row from the TalentOS pool."""
+
+    employee_id: str
+    name: str
+    location: str = ""
+    open_to_relocation: bool = False
+    verification_score: float = 0.0
+    profile_completeness: float = 0.0
+    top_skills: list[str] = Field(default_factory=list)
+    github_username: str = ""
+    linkedin_url: str = ""
+
+
+class PoolCandidateListResponse(BaseModel):
+    """Recruiter pool search response."""
+
+    items: list[PoolCandidateResponse] = Field(default_factory=list)
+    total: int = 0
+
+
+class PoolAccessRequestPayload(BaseModel):
+    """Recruiter contact request payload."""
+
+    job_id: str | None = None
+    message: str = ""
+
+
+class PoolAccessRequestResponse(BaseModel):
+    """Recruiter contact request response."""
+
+    id: str
+    employee_id: str
+    recruiter_id: str
+    status: str
+    message: str
+
+
+class RecruiterAnalyticsResponse(BaseModel):
+    """Recruiter analytics summary payload."""
+
+    active_jobs: int = 0
+    total_pipeline_candidates: int = 0
+    shortlisted_candidates: int = 0
+    hired_candidates: int = 0
+    average_score: float = 0.0
+    skill_distribution: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class JwtPrincipal(BaseModel):
     """Decoded JWT principal shared across route dependencies."""
 
