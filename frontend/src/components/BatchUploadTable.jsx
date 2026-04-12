@@ -1,5 +1,6 @@
 import PropTypes from "prop-types";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { getApiErrorDetails, getJobStatus } from "../services/api";
 
@@ -19,7 +20,7 @@ StatusBadge.propTypes = {
   status: PropTypes.string.isRequired
 };
 
-export default function BatchUploadTable({ jobId }) {
+export default function BatchUploadTable({ jobId, onBatchComplete }) {
   const { data, error, isLoading } = useQuery({
     queryKey: ["job-status", jobId],
     queryFn: () => getJobStatus(jobId),
@@ -29,6 +30,15 @@ export default function BatchUploadTable({ jobId }) {
       return nextStatus === "done" || nextStatus === "failed" ? false : 2000;
     }
   });
+
+  useEffect(() => {
+    if (!jobId || !data?.status) {
+      return;
+    }
+    if (data.status === "done" || data.status === "failed") {
+      onBatchComplete(data);
+    }
+  }, [data, jobId, onBatchComplete]);
 
   if (!jobId) return null;
 
@@ -106,9 +116,11 @@ export default function BatchUploadTable({ jobId }) {
 }
 
 BatchUploadTable.propTypes = {
-  jobId: PropTypes.string
+  jobId: PropTypes.string,
+  onBatchComplete: PropTypes.func
 };
 
 BatchUploadTable.defaultProps = {
-  jobId: ""
+  jobId: "",
+  onBatchComplete: () => {}
 };

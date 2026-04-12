@@ -124,6 +124,7 @@ Before marking any slice done, verify:
 - Recruiter intake-form response listing so recruiters can review recent submissions from the form builder
 - Recruiter pipeline CSV export for one-click candidate export per job
 - Recruiter pipeline compare mode for side-by-side score, skill, and gap review
+- Recruiter bulk resume upload tied to a specific job, with parsed resumes auto-attached to the recruiter pipeline as `resume_upload`
 - Persistent resume storage volume mounted into the backend container for generated artifacts
 - Deterministic mock-data seeding script for 100 employee users plus linked candidate pool rows, social profiles, verified skills, and login manifest output
 
@@ -173,6 +174,7 @@ Before marking any slice done, verify:
   - CSV export
   - compare selection for up to 3 candidates
   - recent public form submission review inside the form builder
+- Recruiter job pipelines now support bulk resume intake with live batch parsing status and automatic pipeline refresh
 
 ### End-To-End Runtime Validation
 - Real single-resume parse flow is working end to end through frontend and backend
@@ -241,3 +243,4 @@ Before marking any slice done, verify:
   - recruiter form response listing returned the public applicant correctly
   - recruiter candidate CSV export included both the public applicant and the direct-apply employee
   - frontend and backend containers both reached healthy status after the latest rebuild
+  - recruiter `resume-batch` upload accepted 2 TXT resumes, batch status finished as `done`, and both parsed candidates appeared in the recruiter pipeline automatically

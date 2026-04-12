@@ -1,11 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import BatchUploadTable from "../../../components/BatchUploadTable";
+import FileDropzone from "../../../components/FileDropzone";
 import {
   downloadRecruiterCandidatesCsv,
+  getApiErrorDetails,
   getAuthToken,
   getRecruiterCandidates,
   getRecruiterJob,
+  queueRecruiterResumeBatch,
   runRecruiterMatching,
   updateRecruiterCandidateStage
 } from "../../../services/api";
@@ -17,6 +21,8 @@ export default function CandidatePipeline() {
   const queryClient = useQueryClient();
   const hasRecruiterToken = Boolean(getAuthToken());
   const [selectedCandidateIds, setSelectedCandidateIds] = useState([]);
+  const [batchFiles, setBatchFiles] = useState([]);
+  const [batchJobId, setBatchJobId] = useState("");
 
   if (!hasRecruiterToken) {
     return (
@@ -65,8 +71,17 @@ export default function CandidatePipeline() {
     mutationFn: () => downloadRecruiterCandidatesCsv(jobId)
   });
 
+  const batchUploadMutation = useMutation({
+    mutationFn: () => queueRecruiterResumeBatch(jobId, batchFiles),
+    onSuccess: (data) => {
+      setBatchJobId(data.job_id);
+      queryClient.invalidateQueries({ queryKey: ["recruiter-candidates", jobId] });
+    }
+  });
+
   const items = candidatesQuery.data?.items || [];
   const selectedCandidates = items.filter((item) => selectedCandidateIds.includes(item.candidate_id));
+  const batchError = batchUploadMutation.error ? getApiErrorDetails(batchUploadMutation.error) : null;
 
   const toggleCandidateSelection = (candidateId) => {
     setSelectedCandidateIds((current) => {
@@ -126,6 +141,43 @@ export default function CandidatePipeline() {
         {runMatchingMutation.error?.response?.data?.message ? (
           <p className="mt-4 text-sm text-rose-600">{runMatchingMutation.error.response.data.message}</p>
         ) : null}
+      </section>
+
+      <section className="rounded-[2rem] bg-white p-8 shadow-panel">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm uppercase tracking-[0.3em] text-stone-500">Resume Intake</p>
+            <h2 className="mt-2 font-display text-2xl font-bold text-slate-900">Bulk recruiter resume upload</h2>
+            <p className="mt-2 max-w-2xl text-sm text-slate-600">
+              Upload multiple resumes for this job. Each file is parsed in the background, matched to the current role, and added to the pipeline as a resume upload.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={!batchFiles.length || batchUploadMutation.isPending}
+            onClick={() => batchUploadMutation.mutate()}
+            className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {batchUploadMutation.isPending ? "Queueing..." : "Queue Resume Batch"}
+          </button>
+        </div>
+        <div className="mt-6">
+          <FileDropzone multiple onFileAccepted={(files) => setBatchFiles(files)} />
+        </div>
+        {batchError ? (
+          <div className="mt-6 rounded-[1.5rem] border border-rose-200 bg-rose-50 p-5 text-sm text-rose-700">
+            <p className="font-semibold">Bulk recruiter upload failed</p>
+            <p className="mt-1">{batchError.message}</p>
+          </div>
+        ) : null}
+        <div className="mt-6">
+          <BatchUploadTable
+            jobId={batchJobId}
+            onBatchComplete={() => {
+              queryClient.invalidateQueries({ queryKey: ["recruiter-candidates", jobId] });
+            }}
+          />
+        </div>
       </section>
 
       <section className="rounded-[2rem] bg-white p-8 shadow-panel">

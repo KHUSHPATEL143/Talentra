@@ -5,15 +5,17 @@ from __future__ import annotations
 import csv
 import io
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.chromadb_client import get_job_collection
 from app.core.database import get_session
+from app.core.redis_client import get_redis
+from app.api.routes.parse import _consume_batch_queue, queue_batch_parse_job
 from app.models.db_v3 import CandidateApplication, JobPosting, Recruiter
-from app.models.schemas import ErrorResponse
+from app.models.schemas import ErrorResponse, JobStatusResponse
 from app.models.schemas_v3 import (
     CandidateStageUpdateRequest,
     CandidateStageUpdateResponse,
@@ -194,6 +196,33 @@ async def create_job_posting(
     await session.commit()
     await session.refresh(record)
     return _job_response(record)
+
+
+@router.post(
+    "/jobs/{job_id}/resume-batch",
+    summary="Queue recruiter resume batch",
+    description="Upload a recruiter-owned batch of resumes and attach parsed candidates to this job pipeline as resume uploads.",
+    response_model=JobStatusResponse,
+    responses={404: {"model": ErrorResponse}},
+)
+async def queue_recruiter_resume_batch(
+    job_id: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    files: list[UploadFile] = File(...),
+    recruiter: Recruiter = Depends(require_recruiter),
+    session: AsyncSession = Depends(get_session),
+) -> JobStatusResponse:
+    """Queue a recruiter-scoped batch resume parse for one job posting."""
+
+    record = await session.scalar(select(JobPosting).where(JobPosting.id == job_id, JobPosting.recruiter_id == recruiter.id))
+    if record is None:
+        raise HTTPException(status_code=404, detail={"error": "job_not_found", "message": "Job posting not found."})
+
+    redis = await get_redis()
+    response = await queue_batch_parse_job(redis=redis, files=files, recruiter_job_id=job_id)
+    background_tasks.add_task(_consume_batch_queue, request.app, response.job_id)
+    return response
 
 
 @router.get(

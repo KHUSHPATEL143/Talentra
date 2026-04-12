@@ -139,6 +139,15 @@ export async function parseBatch(files) {
   return response.data;
 }
 
+export async function queueRecruiterResumeBatch(jobId, files) {
+  const formData = new FormData();
+  files.forEach((file) => formData.append("files", file));
+  const response = await api.post(`/jobs/${jobId}/resume-batch`, formData, {
+    headers: { "Content-Type": "multipart/form-data" }
+  });
+  return response.data;
+}
+
 export async function getJobStatus(jobId) {
   const response = await api.get(`/jobs/${jobId}/status`);
   return response.data;

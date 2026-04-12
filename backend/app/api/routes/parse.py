@@ -2,19 +2,24 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import uuid
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.chromadb_client import get_candidate_collection
 from app.core.config import get_settings
 from app.core.database import AsyncSessionFactory, get_session
 from app.core.redis_client import get_redis
-from app.models.db import Candidate, ExecutionTrace
-from app.models.schemas import ErrorResponse, JobStatusResponse, ParseResponse
+from app.models.db import Candidate, ExecutionTrace, utcnow
+from app.models.db_v3 import CandidateApplication, JobPosting
+from app.models.schemas import BatchJobFileResult, ErrorResponse, JobStatusResponse, ParseResponse
+from app.models.schemas_v3 import RankedCandidate
 
 router = APIRouter(tags=["Parsing"])
 settings = get_settings()
@@ -50,6 +55,145 @@ def _structured_http_error(status_code: int, error: str, message: str, partial_r
         status_code=status_code,
         detail=ErrorResponse(error=error, message=message, trace_id=trace_id, partial_result=partial_result).model_dump(),
     )
+
+
+def _create_batch_file_result(file_name: str, job_id: str) -> BatchJobFileResult:
+    """Create the initial queued status payload for one batch file."""
+
+    return BatchJobFileResult(
+        file_name=file_name or "Unnamed file",
+        job_id=job_id,
+        status="queued",
+    )
+
+
+def _merge_batch_file_result(
+    entries: list[BatchJobFileResult],
+    job_id: str,
+    **updates: Any,
+) -> list[BatchJobFileResult]:
+    """Return updated batch entries with one file status merged in."""
+
+    merged: list[BatchJobFileResult] = []
+    for entry in entries:
+        if entry.job_id == job_id:
+            payload = entry.model_dump()
+            payload.update(updates)
+            merged.append(BatchJobFileResult.model_validate(payload))
+        else:
+            merged.append(entry)
+    return merged
+
+
+async def _load_batch_file_results(redis, batch_id: str) -> list[BatchJobFileResult]:
+    """Load per-file batch statuses from Redis."""
+
+    raw_value = await redis.get(f"job:{batch_id}:results")
+    if not raw_value:
+        return []
+    return [BatchJobFileResult.model_validate(item) for item in json.loads(raw_value)]
+
+
+async def _save_batch_file_results(redis, batch_id: str, entries: list[BatchJobFileResult]) -> None:
+    """Persist per-file batch statuses to Redis."""
+
+    await redis.set(
+        f"job:{batch_id}:results",
+        json.dumps([entry.model_dump() for entry in entries]),
+    )
+
+
+async def _update_batch_file_result(redis, batch_id: str, job_id: str, **updates: Any) -> list[BatchJobFileResult]:
+    """Apply one per-file status update and persist the batch payload."""
+
+    entries = await _load_batch_file_results(redis, batch_id)
+    updated_entries = _merge_batch_file_result(entries, job_id, **updates)
+    await _save_batch_file_results(redis, batch_id, updated_entries)
+    return updated_entries
+
+
+async def _enqueue_dead_letter(redis, batch_id: str, payload: dict[str, Any], error_message: str) -> None:
+    """Persist a failed batch payload for later inspection or replay."""
+
+    await redis.rpush(
+        f"job:{batch_id}:dead_letter",
+        json.dumps(
+            {
+                "file_name": payload.get("file_name"),
+                "file_job_id": payload.get("file_job_id"),
+                "mime_type": payload.get("mime_type"),
+                "file_bytes": payload.get("file_bytes"),
+                "error": error_message,
+            }
+        ),
+    )
+
+
+async def _drain_batch_queue(redis, batch_id: str, total_count: int) -> list[dict[str, Any]]:
+    """Read every queued batch payload from Redis before concurrent processing starts."""
+
+    payloads: list[dict[str, Any]] = []
+    for _ in range(total_count):
+        item = await redis.brpop(f"jobs:{batch_id}", timeout=5)
+        if not item:
+            continue
+        _, raw_payload = item
+        payloads.append(json.loads(raw_payload))
+    return payloads
+
+
+async def _process_batch_payload(app, redis, batch_id: str, payload: dict[str, Any]) -> None:
+    """Process one batch file end to end and persist its per-file status."""
+
+    file_bytes = base64.b64decode(payload["file_bytes"])
+    await _update_batch_file_result(redis, batch_id, payload["file_job_id"], status="processing", error=None)
+
+    try:
+        async with AsyncSessionFactory() as session:
+            state = await app.state.orchestrator.run(
+                session=session,
+                file_bytes=file_bytes,
+                mime_type=payload["mime_type"],
+                job_id=payload["file_job_id"],
+            )
+            if not state.get("parsed_profile"):
+                raise ValueError(_extract_failure_message(state))
+
+            candidate = await _persist_candidate(session, payload["mime_type"], state)
+            recruiter_job_id = payload.get("recruiter_job_id")
+            if recruiter_job_id:
+                await _attach_candidate_to_recruiter_job(
+                    app=app,
+                    session=session,
+                    recruiter_job_id=recruiter_job_id,
+                    candidate=candidate,
+                )
+            await _cache_candidate(redis, candidate)
+            await _upsert_candidate_embedding(candidate)
+            await _update_batch_file_result(
+                redis,
+                batch_id,
+                payload["file_job_id"],
+                status="partial" if state.get("partial", False) else "done",
+                candidate_id=candidate.id,
+                partial=state.get("partial", False),
+                error=None,
+            )
+    except Exception as exc:
+        error_message = str(exc)
+        await _enqueue_dead_letter(redis, batch_id, payload, error_message)
+        await _update_batch_file_result(
+            redis,
+            batch_id,
+            payload["file_job_id"],
+            status="failed",
+            candidate_id=None,
+            partial=False,
+            error=error_message,
+        )
+        await redis.rpush(f"job:{batch_id}:errors", error_message)
+    finally:
+        await redis.incr(f"job:{batch_id}:completed_count")
 
 
 async def _read_and_validate_file(file: UploadFile) -> tuple[bytes, str]:
@@ -111,10 +255,139 @@ async def _persist_candidate(
     return candidate
 
 
+async def _build_parsed_candidate_context(app, candidate: Candidate):
+    """Create a RoleMatcher candidate context from a parsed resume record."""
+
+    candidate_profile = candidate.profile_json.get("candidate_profile", {})
+    skill_profile = candidate.profile_json.get("skill_profile", {})
+    location = candidate_profile.get("location", {})
+    location_label = ", ".join(part for part in [location.get("city", ""), location.get("country", "")] if part)
+    coordinates = await app.state.geocoding_service.geocode(location_label) if location_label else None
+    normalized_skills = list(skill_profile.get("normalized_skills", []))
+    verified_skills = [
+        {
+            "canonical_name": item.get("name", ""),
+            "verification_tier": "SELF_DECLARED",
+            "years": float(item.get("years_experience", 0.0) or 0.0),
+            "proficiency": item.get("proficiency", "intermediate"),
+        }
+        for item in normalized_skills
+        if item.get("name")
+    ]
+    return app.state.role_matcher.build_candidate_context(
+        candidate_id=candidate.id,
+        employee_id=None,
+        name=candidate.name,
+        location_label=location_label,
+        coordinates=coordinates,
+        open_to_relocation=False,
+        verified_skills=verified_skills,
+        total_years=float(skill_profile.get("total_experience_years", 0.0) or 0.0),
+        projects=list(candidate_profile.get("projects", [])),
+    )
+
+
+def _fallback_candidate_ranking(candidate: Candidate, job: JobPosting) -> RankedCandidate:
+    """Return a recruiter-visible fallback ranking when a parsed resume misses the job filters."""
+
+    candidate_profile = candidate.profile_json.get("candidate_profile", {})
+    skill_profile = candidate.profile_json.get("skill_profile", {})
+    location = candidate_profile.get("location", {})
+    location_label = ", ".join(part for part in [location.get("city", ""), location.get("country", "")] if part)
+    top_skills = [item.get("name", "") for item in list(skill_profile.get("normalized_skills", []))[:3] if item.get("name")]
+    return RankedCandidate(
+        candidate_id=candidate.id,
+        job_id=job.id,
+        final_score=0.0,
+        grade="F",
+        location_status="remote" if job.remote else "local",
+        distance_km=None,
+        pipeline_stage="new",
+        candidate_name=candidate.name,
+        location_label=location_label,
+        top_skills=top_skills,
+        verification_score=0.0,
+        skill_breakdown=[],
+        missing_required=[item.get("skill", "") for item in (job.required_skills or []) if item.get("skill")],
+        strongest_projects=[],
+        score_breakdown={
+            "skill_score": 0.0,
+            "experience_score": 0.0,
+            "project_score": 0.0,
+            "verification_score": 0.0,
+        },
+        recommendation="Resume uploaded successfully, but the current profile does not yet meet the role filters strongly enough for a positive match score.",
+    )
+
+
+async def _attach_candidate_to_recruiter_job(app, session: AsyncSession, recruiter_job_id: str, candidate: Candidate) -> None:
+    """Attach a parsed resume candidate to a recruiter job as a resume-upload pipeline row."""
+
+    job = await session.scalar(select(JobPosting).where(JobPosting.id == recruiter_job_id))
+    if job is None:
+        return
+
+    candidate_context = await _build_parsed_candidate_context(app, candidate)
+    ranking = await app.state.role_matcher.score_candidate_for_job(job, candidate_context)
+    if ranking is None:
+        ranking = _fallback_candidate_ranking(candidate, job)
+
+    application = await session.scalar(
+        select(CandidateApplication).where(
+            CandidateApplication.job_id == recruiter_job_id,
+            CandidateApplication.candidate_id == candidate.id,
+        )
+    )
+    pipeline_stage = "shortlisted" if ranking.final_score >= job.auto_shortlist_threshold else (application.pipeline_stage if application else "new")
+    candidate_data = {
+        "candidate_id": candidate.id,
+        "candidate_name": candidate.name,
+        "candidate_email": candidate.email,
+        "source_format": candidate.source_format,
+    }
+    if application is None:
+        session.add(
+            CandidateApplication(
+                candidate_id=candidate.id,
+                employee_id=None,
+                job_id=recruiter_job_id,
+                source="resume_upload",
+                candidate_data=candidate_data,
+                match_result=ranking.model_dump(),
+                final_score=ranking.final_score,
+                pipeline_stage=pipeline_stage,
+            )
+        )
+    else:
+        application.candidate_data = candidate_data
+        application.match_result = ranking.model_dump()
+        application.final_score = ranking.final_score
+        application.pipeline_stage = pipeline_stage
+        application.updated_at = utcnow()
+    await session.commit()
+
+
 async def _cache_candidate(redis, candidate: Candidate) -> None:
     """Store the persisted candidate in Redis for one hour."""
 
-    await redis.setex(f"candidate:{candidate.id}", settings.redis_cache_ttl_seconds, json.dumps(candidate.profile_json))
+    await redis.setex(f"candidate:{candidate.id}:cache", settings.redis_cache_ttl_seconds, json.dumps(candidate.profile_json))
+
+
+async def _upsert_candidate_embedding(candidate: Candidate) -> None:
+    """Persist a candidate embedding in the dedicated Chroma collection."""
+
+    skill_profile = candidate.profile_json.get("skill_profile", {})
+    embedding_vector = skill_profile.get("embedding_vector") or []
+    if not embedding_vector:
+        return
+
+    collection = get_candidate_collection()
+    collection.upsert(
+        ids=[candidate.id],
+        embeddings=[embedding_vector],
+        metadatas=[{"name": candidate.name, "source_format": candidate.source_format}],
+        documents=[candidate.profile_json.get("candidate_profile", {}).get("summary") or candidate.name or candidate.id],
+    )
 
 
 def _extract_failure_message(state: dict[str, Any]) -> str:
@@ -136,39 +409,19 @@ async def _consume_batch_queue(app, batch_id: str) -> None:
     redis = await get_redis()
     total_count = int(await redis.get(f"job:{batch_id}:total_count") or 0)
     await redis.set(f"job:{batch_id}:status", "processing")
+    payloads = await _drain_batch_queue(redis, batch_id, total_count)
+    semaphore = asyncio.Semaphore(settings.max_workers)
 
-    for _ in range(total_count):
-        item = await redis.brpop(f"jobs:{batch_id}", timeout=5)
-        if not item:
-            continue
-        _, raw_payload = item
-        payload = json.loads(raw_payload)
-        file_bytes = base64.b64decode(payload["file_bytes"])
-        async with AsyncSessionFactory() as session:
-            try:
-                state = await app.state.orchestrator.run(
-                    session=session,
-                    file_bytes=file_bytes,
-                    mime_type=payload["mime_type"],
-                    job_id=payload["file_job_id"],
-                )
-                if not state.get("parsed_profile"):
-                    raise ValueError(_extract_failure_message(state))
-                candidate = await _persist_candidate(session, payload["mime_type"], state)
-                result = {
-                    "file_name": payload["file_name"],
-                    "candidate_id": candidate.id,
-                    "job_id": payload["file_job_id"],
-                    "partial": state.get("partial", False),
-                }
-                await redis.rpush(f"job:{batch_id}:results", json.dumps(result))
-                await redis.incr(f"job:{batch_id}:completed_count")
-            except Exception as exc:
-                await redis.rpush(f"job:{batch_id}:errors", str(exc))
+    async def _runner(payload: dict[str, Any]) -> None:
+        async with semaphore:
+            await _process_batch_payload(app, redis, batch_id, payload)
 
-    completed = int(await redis.get(f"job:{batch_id}:completed_count") or 0)
-    errors = await redis.lrange(f"job:{batch_id}:errors", 0, -1)
-    await redis.set(f"job:{batch_id}:status", "done" if completed == total_count and not errors else "failed")
+    await asyncio.gather(*(_runner(payload) for payload in payloads))
+
+    results = await _load_batch_file_results(redis, batch_id)
+    errors = [entry.error for entry in results if entry.error]
+    overall_status = "failed" if any(entry.status == "failed" for entry in results) else "done"
+    await redis.set(f"job:{batch_id}:status", overall_status)
 
     async with AsyncSessionFactory() as session:
         await app.state.webhook_service.dispatch_event(
@@ -176,11 +429,58 @@ async def _consume_batch_queue(app, batch_id: str) -> None:
             event_name="batch.complete",
             payload={
                 "job_id": batch_id,
-                "completed_count": completed,
+                "completed_count": int(await redis.get(f"job:{batch_id}:completed_count") or 0),
                 "total_count": total_count,
                 "errors": errors,
+                "results": [entry.model_dump() for entry in results],
             },
         )
+
+
+async def queue_batch_parse_job(
+    *,
+    redis,
+    files: list[UploadFile],
+    recruiter_job_id: str | None = None,
+) -> JobStatusResponse:
+    """Queue a Redis-backed batch parse job, optionally tied to a recruiter job."""
+
+    if len(files) > settings.max_batch_files:
+        raise _structured_http_error(400, "batch_too_large", f"Batch size exceeds the maximum of {settings.max_batch_files}.")
+
+    batch_id = str(uuid.uuid4())
+    await redis.set(f"job:{batch_id}:status", "queued")
+    await redis.set(f"job:{batch_id}:completed_count", 0)
+    await redis.set(f"job:{batch_id}:total_count", len(files))
+    await redis.delete(f"job:{batch_id}:results")
+    await redis.delete(f"job:{batch_id}:errors")
+    await redis.delete(f"job:{batch_id}:dead_letter")
+
+    queued_entries: list[BatchJobFileResult] = []
+    for file in files:
+        file_bytes, mime_type = await _read_and_validate_file(file)
+        file_job_id = str(uuid.uuid4())
+        payload = {
+            "file_name": file.filename,
+            "mime_type": mime_type,
+            "file_job_id": file_job_id,
+            "file_bytes": base64.b64encode(file_bytes).decode("utf-8"),
+        }
+        if recruiter_job_id:
+            payload["recruiter_job_id"] = recruiter_job_id
+        queued_entries.append(_create_batch_file_result(file.filename or "Unnamed file", file_job_id))
+        await redis.lpush(f"jobs:{batch_id}", json.dumps(payload))
+
+    await _save_batch_file_results(redis, batch_id, queued_entries)
+    return JobStatusResponse(
+        job_id=batch_id,
+        status="queued",
+        file_count=len(files),
+        completed_count=0,
+        total_count=len(files),
+        results=queued_entries,
+        errors=[],
+    )
 
 
 @router.post(
@@ -215,6 +515,7 @@ async def parse_resume(
     candidate = await _persist_candidate(session, mime_type, state)
     redis = await get_redis()
     await _cache_candidate(redis, candidate)
+    await _upsert_candidate_embedding(candidate)
     await request.app.state.webhook_service.dispatch_event(
         session=session,
         event_name="parse.complete",
@@ -244,26 +545,7 @@ async def parse_resume_batch(
 ) -> JobStatusResponse:
     """Queue a batch parsing job and start the background consumer."""
 
-    if len(files) > settings.max_batch_files:
-        raise _structured_http_error(400, "batch_too_large", f"Batch size exceeds the maximum of {settings.max_batch_files}.")
-
     redis = await get_redis()
-    batch_id = str(uuid.uuid4())
-    await redis.set(f"job:{batch_id}:status", "queued")
-    await redis.set(f"job:{batch_id}:completed_count", 0)
-    await redis.set(f"job:{batch_id}:total_count", len(files))
-    await redis.delete(f"job:{batch_id}:results")
-    await redis.delete(f"job:{batch_id}:errors")
-
-    for file in files:
-        file_bytes, mime_type = await _read_and_validate_file(file)
-        payload = {
-            "file_name": file.filename,
-            "mime_type": mime_type,
-            "file_job_id": str(uuid.uuid4()),
-            "file_bytes": base64.b64encode(file_bytes).decode("utf-8"),
-        }
-        await redis.lpush(f"jobs:{batch_id}", json.dumps(payload))
-
-    background_tasks.add_task(_consume_batch_queue, request.app, batch_id)
-    return JobStatusResponse(job_id=batch_id, status="queued", file_count=len(files), completed_count=0, total_count=len(files), results=[], errors=[])
+    response = await queue_batch_parse_job(redis=redis, files=files)
+    background_tasks.add_task(_consume_batch_queue, request.app, response.job_id)
+    return response
