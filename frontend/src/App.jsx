@@ -8,7 +8,7 @@ import TaxonomyPage from "./pages/TaxonomyPage";
 import Profile from "./pages/Profile";
 import Sidebar from "./components/Sidebar";
 import AuthModal from "./components/AuthModal";
-import { getClientApiKey, setClientApiKey } from "./services/api";
+import { getClientApiKey, setClientApiKey, logout as apiLogout } from "./services/api";
 import { Cpu } from "lucide-react";
 
 export default function App() {
@@ -73,6 +73,7 @@ export default function App() {
 
   const handleLogout = () => {
     setIsLoggedIn(false);
+    apiLogout();
     localStorage.removeItem("talentra_isLoggedIn");
     localStorage.removeItem("talentra_user");
     navigate("/");
@@ -98,6 +99,7 @@ export default function App() {
         isOpen={authModal.isOpen} 
         onClose={closeAuth} 
         type={authModal.type} 
+        onToggleType={(type) => setAuthModal(prev => ({ ...prev, type }))}
         onSuccess={handleAuthSuccess}
       />
 

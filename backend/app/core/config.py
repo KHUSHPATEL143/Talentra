@@ -14,8 +14,11 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 class Settings(BaseSettings):
     """Central application configuration."""
 
-    app_name: str = "GARUDA Resume Intelligence API"
+    app_name: str = "Talentra - Talent Intelligence Platform"
     api_v1_prefix: str = "/api/v1"
+    secret_key: str = "your-super-secret-key-change-this-in-production"
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60 * 24 * 7  # 1 week
     environment: str = "development"
     log_level: str = "INFO"
     openai_api_key: str = ""
@@ -23,9 +26,11 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
     llm_provider: str = "openai"
-    database_url: str = "postgresql+asyncpg://postgres:postgres@postgres:5432/garuda"
+    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/garuda"
+    mongodb_url: str = "mongodb://localhost:27017/talentra"
+    redis_url: str = "redis://localhost:6379/0"
     redis_url: str = "redis://redis:6379/0"
-    chromadb_host: str = "chromadb"
+    chromadb_host: str = "localhost"
     chromadb_port: int = 8000
     chromadb_collection: str = "skills"
     default_match_mode: str = "precision"

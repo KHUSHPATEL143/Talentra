@@ -21,7 +21,8 @@ from app.agents.orchestrator import ResumeOrchestrator
 from app.agents.parsing_agent import ParsingAgent
 from app.api.middleware.auth import ApiKeyAuthMiddleware
 from app.api.middleware.rate_limit import RateLimitMiddleware
-from app.api.routes import candidates, jobs, match, parse, taxonomy, webhooks
+from app.api.routes import candidates, jobs, match, parse, taxonomy, webhooks, auth
+from app.core.mongodb import connect_to_mongo, close_mongo_connection
 from app.core.config import get_settings
 from app.core.database import AsyncSessionFactory, init_database
 from app.models.db import ApiKey
@@ -36,6 +37,7 @@ from app.services.webhook_service import WebhookService
 from app.utils.skill_inference import SkillInferenceEngine
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 def configure_logging() -> None:
@@ -93,15 +95,33 @@ async def seed_default_api_key() -> None:
 async def lifespan(app: FastAPI):
     """Initialize infrastructure, services, and seed data."""
 
-    configure_logging()
-    await init_database()
+    # Initialize optional services
+    try:
+        await init_database()
+        logger.info("SQL database initialized.")
+    except Exception as e:
+        logger.warning(f"SQL database initialization failed: {e}. Some features may be unavailable.")
 
+    try:
+        await connect_to_mongo()
+        logger.info("MongoDB initialized.")
+    except Exception as e:
+        logger.error(f"MongoDB initialization failed: {e}. Authentication will not work!")
+
+    # Initialize agents and services
     embedding_service = EmbeddingService()
     llm_service = LLMService()
     file_parser = FileParserService()
     heuristic_service = ResumeHeuristicService()
-    taxonomy_service = TaxonomyService(embedding_service=embedding_service, llm_service=llm_service)
-    job_heuristic_service = JobHeuristicService([entry["canonical_name"] for entry in taxonomy_service.taxonomy_entries])
+    
+    try:
+        taxonomy_service = TaxonomyService(embedding_service=embedding_service, llm_service=llm_service)
+        job_heuristic_service = JobHeuristicService([entry["canonical_name"] for entry in taxonomy_service.taxonomy_entries])
+    except Exception as e:
+        logger.warning(f"Taxonomy service initialization failed: {e}.")
+        taxonomy_service = None
+        job_heuristic_service = None
+
     inference_engine = SkillInferenceEngine.from_yaml(settings.resolved_inference_rules_path)
     parsing_agent = ParsingAgent(file_parser=file_parser, llm_service=llm_service, heuristic_service=heuristic_service)
     normalization_agent = NormalizationAgent(taxonomy_service=taxonomy_service, inference_engine=inference_engine)
@@ -118,9 +138,17 @@ async def lifespan(app: FastAPI):
     )
     webhook_service = WebhookService()
 
-    async with AsyncSessionFactory() as session:
-        await taxonomy_service.seed_taxonomy(session)
-    await seed_default_api_key()
+    try:
+        async with AsyncSessionFactory() as session:
+            if taxonomy_service:
+                await taxonomy_service.seed_taxonomy(session)
+    except Exception as e:
+        logger.warning(f"Taxonomy seeding failed: {e}.")
+
+    try:
+        await seed_default_api_key()
+    except Exception as e:
+        logger.warning(f"API key seeding failed: {e}.")
 
     app.state.embedding_service = embedding_service
     app.state.llm_service = llm_service
@@ -135,6 +163,7 @@ async def lifespan(app: FastAPI):
     app.state.orchestrator = orchestrator
     app.state.webhook_service = webhook_service
     yield
+    await close_mongo_connection()
 
 
 def create_app() -> FastAPI:
@@ -157,6 +186,7 @@ def create_app() -> FastAPI:
     app.include_router(taxonomy.router, prefix=settings.api_v1_prefix)
     app.include_router(jobs.router, prefix=settings.api_v1_prefix)
     app.include_router(webhooks.router, prefix=settings.api_v1_prefix)
+    app.include_router(auth.router, prefix=settings.api_v1_prefix)
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:

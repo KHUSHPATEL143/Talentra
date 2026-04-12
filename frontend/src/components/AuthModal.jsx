@@ -1,18 +1,48 @@
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Mail, Lock, Code, Globe, User, ShieldCheck } from "lucide-react";
+import { X, Mail, Lock, Code, Globe, User, ShieldCheck, Loader2, AlertCircle } from "lucide-react";
+import { login, signup } from "../services/api";
 
-export default function AuthModal({ isOpen, onClose, type = "login", onSuccess }) {
+export default function AuthModal({ isOpen, onClose, type = "login", onToggleType, onSuccess }) {
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+
   if (!isOpen) return null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    const formData = new FormData(e.target);
-    const name = formData.get("name") || "Jan Doe";
-    const email = formData.get("email");
+    setIsLoading(true);
+    setError("");
     
-    // In a real app, we'd check if password matches confirmPassword here
-    if (onSuccess) {
-      onSuccess({ name, email });
+    const formData = new FormData(e.target);
+    const email = formData.get("email");
+    const password = formData.get("password");
+    
+    try {
+      let response;
+      if (type === "signup") {
+        const name = formData.get("name");
+        const confirmPassword = formData.get("confirmPassword");
+        
+        if (password !== confirmPassword) {
+          setError("Passwords do not match.");
+          setIsLoading(false);
+          return;
+        }
+        
+        response = await signup(name, email, password);
+      } else {
+        response = await login(email, password);
+      }
+      
+      if (onSuccess) {
+        onSuccess(response.user);
+      }
+    } catch (err) {
+      console.error("Auth error:", err);
+      setError(err.response?.data?.detail || "Authentication failed. Please check your credentials.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -73,6 +103,17 @@ export default function AuthModal({ isOpen, onClose, type = "login", onSuccess }
             </div>
           </div>
 
+          {error && (
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-6 flex items-center gap-3 rounded-2xl bg-red-50 p-4 text-sm font-medium text-red-600 border border-red-100"
+            >
+              <AlertCircle size={18} className="shrink-0" />
+              <p>{error}</p>
+            </motion.div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
             {isSignUp && (
               <div className="relative">
@@ -102,6 +143,7 @@ export default function AuthModal({ isOpen, onClose, type = "login", onSuccess }
               <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="password"
+                name="password"
                 required
                 minLength={6}
                 placeholder="Password"
@@ -114,6 +156,7 @@ export default function AuthModal({ isOpen, onClose, type = "login", onSuccess }
                 <ShieldCheck size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="password"
+                  name="confirmPassword"
                   required
                   placeholder="Confirm password"
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-12 pr-4 text-sm outline-none transition-all focus:border-emerald-400 focus:bg-white focus:ring-4 focus:ring-emerald-400/10"
@@ -123,15 +166,32 @@ export default function AuthModal({ isOpen, onClose, type = "login", onSuccess }
 
             <button
               type="submit"
-              className="mt-2 w-full rounded-2xl bg-slate-950 py-4 text-base font-bold text-white transition-all hover:bg-slate-800 active:scale-[0.98] shadow-xl shadow-slate-950/10"
+              disabled={isLoading}
+              className="mt-2 w-full flex items-center justify-center gap-2 rounded-2xl bg-slate-950 py-4 text-base font-bold text-white transition-all hover:bg-slate-800 active:scale-[0.98] shadow-xl shadow-slate-950/10 disabled:opacity-70 disabled:cursor-not-allowed"
             >
-              {isSignUp ? "Create Account" : "Sign In"}
+              {isLoading ? (
+                <>
+                  <Loader2 size={20} className="animate-spin" />
+                  <span>Processing...</span>
+                </>
+              ) : (
+                isSignUp ? "Create Account" : "Sign In"
+              )}
             </button>
           </form>
 
           <p className="mt-8 text-center text-sm text-slate-500">
             {type === "login" ? "Don't have an account?" : "Already have an account?"}
-            <button className="ml-1 font-bold text-emerald-600 hover:text-emerald-700">
+            <button 
+              type="button"
+              onClick={() => {
+                setError("");
+                if (onToggleType) {
+                  onToggleType(type === "login" ? "signup" : "login");
+                }
+              }}
+              className="ml-1 font-bold text-emerald-600 hover:text-emerald-700"
+            >
               {type === "login" ? "Sign up" : "Log in"}
             </button>
           </p>
