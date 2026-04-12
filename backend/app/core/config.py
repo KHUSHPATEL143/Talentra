@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     openai_base_url: str = ""
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
+    github_token: str = ""
     llm_provider: str = "openai"
     database_url: str = "postgresql+asyncpg://postgres:postgres@postgres:5432/garuda"
     redis_url: str = "redis://redis:6379/0"

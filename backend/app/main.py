@@ -19,6 +19,8 @@ from app.agents.matching_agent import MatchingAgent
 from app.agents.normalization_agent import NormalizationAgent
 from app.agents.orchestrator import ResumeOrchestrator
 from app.agents.parsing_agent import ParsingAgent
+from app.agents.social_scraping_agent import SocialScrapingAgent
+from app.agents.career_coach_agent import CareerCoachAgent
 from app.agents.job_posting_agent import JobPostingAgent
 from app.agents.role_matcher import RoleMatcher
 from app.api.middleware.auth import ApiKeyAuthMiddleware
@@ -129,6 +131,8 @@ async def lifespan(app: FastAPI):
         embedding_service=embedding_service,
         geocoding_service=geocoding_service,
     )
+    social_scraping_agent = SocialScrapingAgent(github_token=settings.github_token)
+    career_coach_agent = CareerCoachAgent(role_matcher=role_matcher)
     orchestrator = ResumeOrchestrator(
         parsing_agent=parsing_agent,
         normalization_agent=normalization_agent,
@@ -154,6 +158,8 @@ async def lifespan(app: FastAPI):
     app.state.job_posting_agent = job_posting_agent
     app.state.matching_agent = matching_agent
     app.state.role_matcher = role_matcher
+    app.state.social_scraping_agent = social_scraping_agent
+    app.state.career_coach_agent = career_coach_agent
     app.state.orchestrator = orchestrator
     app.state.webhook_service = webhook_service
     yield

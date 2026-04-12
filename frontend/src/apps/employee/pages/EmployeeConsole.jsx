@@ -2,11 +2,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getAuthToken,
   getCurrentPrincipal,
+  getEmployeeCareerCoach,
   getEmployeeProfile,
   listEmployeeJobs,
   login,
   registerEmployee,
   setAuthToken,
+  syncEmployeeSocialProfiles,
   updateEmployeeProfile,
   verifyEmployeeProfile
 } from "../../../services/api";
@@ -29,6 +31,12 @@ export default function EmployeeConsole() {
   const jobsQuery = useQuery({
     queryKey: ["employee-jobs"],
     queryFn: listEmployeeJobs,
+    retry: false,
+    enabled: meQuery.data?.role === "employee"
+  });
+  const coachQuery = useQuery({
+    queryKey: ["employee-career-coach"],
+    queryFn: getEmployeeCareerCoach,
     retry: false,
     enabled: meQuery.data?.role === "employee"
   });
@@ -64,6 +72,16 @@ export default function EmployeeConsole() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["employee-profile"] });
       queryClient.invalidateQueries({ queryKey: ["employee-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["employee-career-coach"] });
+    }
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: syncEmployeeSocialProfiles,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["employee-profile"] });
+      queryClient.invalidateQueries({ queryKey: ["employee-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["employee-career-coach"] });
     }
   });
 
@@ -100,6 +118,14 @@ export default function EmployeeConsole() {
               <div className="mt-6 flex flex-wrap gap-3">
                 <button
                   type="button"
+                  onClick={() => syncMutation.mutate()}
+                  disabled={syncMutation.isPending}
+                  className="rounded-full border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 disabled:opacity-60"
+                >
+                  {syncMutation.isPending ? "Syncing..." : "Sync Social Profiles"}
+                </button>
+                <button
+                  type="button"
                   onClick={() => verifyMutation.mutate()}
                   disabled={verifyMutation.isPending}
                   className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-60"
@@ -110,8 +136,8 @@ export default function EmployeeConsole() {
                   Status: {profileQuery.data?.scrape_status || "pending"}
                 </span>
               </div>
-              {verifyMutation.error?.response?.data?.message ? (
-                <p className="mt-4 text-sm text-rose-600">{verifyMutation.error.response.data.message}</p>
+              {syncMutation.error?.response?.data?.message || verifyMutation.error?.response?.data?.message ? (
+                <p className="mt-4 text-sm text-rose-600">{syncMutation.error?.response?.data?.message || verifyMutation.error?.response?.data?.message}</p>
               ) : null}
               <div className="mt-6 space-y-3">
                 {(profileQuery.data?.verified_skills || []).slice(0, 6).map((skill) => (
@@ -129,6 +155,47 @@ export default function EmployeeConsole() {
                 ))}
                 {!profileQuery.data?.verified_skills?.length ? (
                   <p className="text-sm text-slate-500">No verified skills yet. Add claims and project evidence, then run verification.</p>
+                ) : null}
+              </div>
+            </section>
+          </section>
+
+          <section className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+            <section className="rounded-[2rem] bg-white p-8 shadow-panel">
+              <p className="text-sm uppercase tracking-[0.3em] text-stone-500">Career Coach</p>
+              <h2 className="mt-3 font-display text-3xl font-bold text-slate-900">Skills to learn next</h2>
+              <div className="mt-6 space-y-3">
+                {(coachQuery.data?.recommended_skills || []).slice(0, 5).map((item) => (
+                  <div key={item.skill} className="rounded-2xl border border-slate-200 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <strong className="text-slate-900">{item.skill}</strong>
+                      <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-semibold text-stone-700">
+                        {item.estimated_months} mo
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm text-slate-600">{item.reason}</p>
+                  </div>
+                ))}
+                {!coachQuery.data?.recommended_skills?.length ? (
+                  <p className="text-sm text-slate-500">Complete profile sync and verification to unlock stronger coaching recommendations.</p>
+                ) : null}
+              </div>
+            </section>
+
+            <section className="rounded-[2rem] bg-white p-8 shadow-panel">
+              <p className="text-sm uppercase tracking-[0.3em] text-sky-600">Score Trajectory</p>
+              <h2 className="mt-3 font-display text-3xl font-bold text-slate-900">How one skill changes your score</h2>
+              <div className="mt-6 space-y-3">
+                {(coachQuery.data?.score_trajectories || []).slice(0, 4).map((item) => (
+                  <div key={`${item.job_id}-${item.recommended_skill}`} className="rounded-2xl bg-slate-50 p-4">
+                    <p className="text-sm font-semibold text-slate-900">{item.job_title}</p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Learn <strong>{item.recommended_skill}</strong>: {item.current_score} -> {item.projected_score}
+                    </p>
+                  </div>
+                ))}
+                {!coachQuery.data?.score_trajectories?.length ? (
+                  <p className="text-sm text-slate-500">No score trajectory is available yet.</p>
                 ) : null}
               </div>
             </section>

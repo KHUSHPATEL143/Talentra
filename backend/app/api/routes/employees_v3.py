@@ -9,14 +9,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
-from app.models.db_v3 import Employee, JobPosting, SocialProfile, VerifiedSkillProfile
+from app.models.db import utcnow
+from app.models.db_v3 import CareerSuggestion, Employee, JobPosting, SocialProfile, VerifiedSkillProfile
 from app.models.schemas_v3 import (
+    CareerSuggestionResponse,
     EmployeeJobBoardItem,
     EmployeeJobBoardResponse,
     EmployeeJobMatchPreview,
     EmployeeProfileResponse,
     EmployeeProfileUpdateRequest,
     JobSkillRequirement,
+    SocialSyncResponse,
 )
 from app.services.auth_service import require_employee
 
@@ -317,6 +320,58 @@ async def get_employee_profile(
     return _employee_response(employee, social, verified)
 
 
+@router.post("/employee/social-sync", response_model=SocialSyncResponse, summary="Sync employee social profiles")
+async def sync_employee_social(
+    request: Request,
+    employee: Employee = Depends(require_employee),
+    session: AsyncSession = Depends(get_session),
+) -> SocialSyncResponse:
+    """Fetch public GitHub/LeetCode data and merge it with LinkedIn manual data."""
+
+    social = await _get_or_create_social_profile(session, employee)
+    social_payload = await request.app.state.social_scraping_agent.run(
+        github_username=social.github_username,
+        linkedin_url=social.linkedin_url,
+        leetcode_username=social.leetcode_username,
+        linkedin_manual=social.linkedin_data,
+    )
+
+    github_payload = social_payload.get("github", {}) or {}
+    imported_projects = []
+    for repo in github_payload.get("repos", []):
+        imported_projects.append(
+            {
+                "name": repo.get("name", ""),
+                "description": repo.get("description", ""),
+                "url": repo.get("url", ""),
+                "languages": list(repo.get("languages", [])),
+                "topics": list(repo.get("topics", [])),
+                "stars": int(repo.get("stars", 0) or 0),
+                "has_tests": bool(repo.get("has_tests", False)),
+                "has_ci": bool(repo.get("has_ci", False)),
+            }
+        )
+
+    claimed_skills = list(dict.fromkeys([*social.github_data.get("claimed_skills", []), *github_payload.get("top_languages", [])]))
+    social.github_data = {
+        **github_payload,
+        "claimed_skills": claimed_skills,
+        "projects": imported_projects,
+    }
+    social.linkedin_data = social_payload.get("linkedin", {}) or {}
+    social.leetcode_data = social_payload.get("leetcode", {}) or {}
+    social.scrape_status = "synced"
+    social.last_scraped_at = utcnow()
+    await session.commit()
+
+    return SocialSyncResponse(
+        scrape_status=social.scrape_status,
+        github=social.github_data,
+        linkedin=social.linkedin_data,
+        leetcode=social.leetcode_data,
+    )
+
+
 @router.put("/employee/profile", response_model=EmployeeProfileResponse, summary="Update employee profile")
 async def update_employee_profile(
     request: Request,
@@ -425,5 +480,30 @@ async def list_employee_jobs(
                 hybrid=job.hybrid,
                 match_preview=match_preview,
             )
-        )
+    )
     return EmployeeJobBoardResponse(items=items, total=len(items))
+
+
+@router.get("/employee/career-coach", response_model=CareerSuggestionResponse, summary="Get employee career coaching")
+async def get_employee_career_coach(
+    request: Request,
+    employee: Employee = Depends(require_employee),
+    session: AsyncSession = Depends(get_session),
+) -> CareerSuggestionResponse:
+    """Generate or refresh employee-facing skill-gap recommendations."""
+
+    social = await _get_or_create_social_profile(session, employee)
+    verified = await _get_or_create_verified_profile(session, employee)
+    candidate = await _build_employee_candidate_context(employee, social, verified, request)
+    suggestion = await request.app.state.career_coach_agent.run(
+        session=session,
+        employee=employee,
+        social=social,
+        verified=verified,
+        candidate_context=candidate,
+    )
+    return CareerSuggestionResponse(
+        recommended_skills=suggestion.recommended_skills,
+        top_jobs=suggestion.top_jobs,
+        score_trajectories=suggestion.score_trajectories,
+    )

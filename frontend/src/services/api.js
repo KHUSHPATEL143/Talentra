@@ -215,6 +215,16 @@ export async function listEmployeeJobs() {
   return response.data;
 }
 
+export async function syncEmployeeSocialProfiles() {
+  const response = await api.post("/employee/social-sync");
+  return response.data;
+}
+
+export async function getEmployeeCareerCoach() {
+  const response = await api.get("/employee/career-coach");
+  return response.data;
+}
+
 export async function createRecruiterJob(payload) {
   const response = await api.post("/jobs", payload);
   return response.data;

@@ -394,6 +394,23 @@ class EmployeeJobBoardResponse(BaseModel):
     total: int = 0
 
 
+class SocialSyncResponse(BaseModel):
+    """Employee social-sync response payload."""
+
+    scrape_status: str
+    github: dict[str, Any] = Field(default_factory=dict)
+    linkedin: dict[str, Any] = Field(default_factory=dict)
+    leetcode: dict[str, Any] = Field(default_factory=dict)
+
+
+class CareerSuggestionResponse(BaseModel):
+    """Employee-facing career coach payload."""
+
+    recommended_skills: list[dict[str, Any]] = Field(default_factory=list)
+    top_jobs: list[dict[str, Any]] = Field(default_factory=list)
+    score_trajectories: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class JwtPrincipal(BaseModel):
     """Decoded JWT principal shared across route dependencies."""
 
