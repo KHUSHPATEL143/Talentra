@@ -75,6 +75,11 @@ export default function CandidatePipeline() {
             {runMatchingMutation.isPending ? "Running..." : "Run Matching"}
           </button>
         </div>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <Link to={`/talentos/recruiter/jobs/${jobId}/forms`} className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">
+            Open Form Builder
+          </Link>
+        </div>
         {runMatchingMutation.data ? (
           <p className="mt-4 text-sm text-slate-600">
             Last run matched {runMatchingMutation.data.matched_count} candidates and auto-shortlisted {runMatchingMutation.data.shortlisted_count}.

@@ -26,7 +26,7 @@ from app.agents.role_matcher import RoleMatcher
 from app.api.middleware.auth import ApiKeyAuthMiddleware
 from app.api.middleware.request_metrics import RequestMetricsMiddleware
 from app.api.middleware.rate_limit import RateLimitMiddleware
-from app.api.routes import auth_v3, candidates, employees_v3, jobs, jobs_v3, match, parse, taxonomy, webhooks
+from app.api.routes import auth_v3, candidates, employees_v3, forms_v3, jobs, jobs_v3, match, parse, pool_v3, taxonomy, webhooks
 from app.core.config import get_settings
 from app.core.database import AsyncSessionFactory, init_database
 from app.models.db import ApiKey
@@ -189,6 +189,8 @@ def create_app() -> FastAPI:
     app.include_router(auth_v3.router, prefix=settings.api_v1_prefix)
     app.include_router(jobs_v3.router, prefix=settings.api_v1_prefix)
     app.include_router(employees_v3.router, prefix=settings.api_v1_prefix)
+    app.include_router(forms_v3.router, prefix=settings.api_v1_prefix)
+    app.include_router(pool_v3.router, prefix=settings.api_v1_prefix)
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> Response:

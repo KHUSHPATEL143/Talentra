@@ -225,6 +225,41 @@ export async function getEmployeeCareerCoach() {
   return response.data;
 }
 
+export async function createIntakeForm(jobId, payload) {
+  const response = await api.post(`/jobs/${jobId}/forms`, payload);
+  return response.data;
+}
+
+export async function getIntakeForm(jobId) {
+  const response = await api.get(`/jobs/${jobId}/forms`);
+  return response.data;
+}
+
+export async function getPublicIntakeForm(slug) {
+  const response = await api.get(`/public/forms/${slug}`);
+  return response.data;
+}
+
+export async function submitPublicIntakeForm(slug, payload) {
+  const response = await api.post(`/public/forms/${slug}/submit`, payload);
+  return response.data;
+}
+
+export async function listPoolCandidates(params = {}) {
+  const response = await api.get("/pool/candidates", { params });
+  return response.data;
+}
+
+export async function requestPoolAccess(employeeId, payload) {
+  const response = await api.post(`/pool/request/${employeeId}`, payload);
+  return response.data;
+}
+
+export async function getRecruiterAnalytics() {
+  const response = await api.get("/analytics/overview");
+  return response.data;
+}
+
 export async function createRecruiterJob(payload) {
   const response = await api.post("/jobs", payload);
   return response.data;

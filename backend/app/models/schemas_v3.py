@@ -411,6 +411,102 @@ class CareerSuggestionResponse(BaseModel):
     score_trajectories: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class IntakeFormField(BaseModel):
+    """Recruiter-configurable intake field."""
+
+    key: str
+    label: str
+    field_type: Literal["text", "textarea", "dropdown", "multi_select", "yes_no", "location", "file"] = "text"
+    required: bool = False
+    options: list[str] = Field(default_factory=list)
+
+
+class IntakeFormCreateRequest(BaseModel):
+    """Create or replace a recruiter intake form."""
+
+    fields: list[IntakeFormField] = Field(default_factory=list)
+
+
+class IntakeFormResponse(BaseModel):
+    """Recruiter or public view of an intake form."""
+
+    id: str
+    job_id: str
+    public_slug: str
+    response_count: int
+    fields: list[IntakeFormField] = Field(default_factory=list)
+
+
+class PublicFormSubmissionRequest(BaseModel):
+    """Public candidate submission payload for an intake form."""
+
+    name: str = Field(min_length=1)
+    email: EmailStr
+    phone: str = ""
+    location: str = ""
+    open_to_relocation: bool = False
+    github_url: str = ""
+    linkedin_url: str = ""
+    answers: dict[str, Any] = Field(default_factory=dict)
+
+
+class PublicFormSubmissionResponse(BaseModel):
+    """Public intake submission confirmation."""
+
+    form_id: str
+    application_id: str
+    submitted: bool = True
+
+
+class PoolCandidateResponse(BaseModel):
+    """Recruiter-visible candidate row from the TalentOS pool."""
+
+    employee_id: str
+    name: str
+    location: str = ""
+    open_to_relocation: bool = False
+    verification_score: float = 0.0
+    profile_completeness: float = 0.0
+    top_skills: list[str] = Field(default_factory=list)
+    github_username: str = ""
+    linkedin_url: str = ""
+
+
+class PoolCandidateListResponse(BaseModel):
+    """Recruiter pool search response."""
+
+    items: list[PoolCandidateResponse] = Field(default_factory=list)
+    total: int = 0
+
+
+class PoolAccessRequestPayload(BaseModel):
+    """Recruiter contact request payload."""
+
+    job_id: str | None = None
+    message: str = ""
+
+
+class PoolAccessRequestResponse(BaseModel):
+    """Recruiter contact request response."""
+
+    id: str
+    employee_id: str
+    recruiter_id: str
+    status: str
+    message: str
+
+
+class RecruiterAnalyticsResponse(BaseModel):
+    """Recruiter analytics summary payload."""
+
+    active_jobs: int = 0
+    total_pipeline_candidates: int = 0
+    shortlisted_candidates: int = 0
+    hired_candidates: int = 0
+    average_score: float = 0.0
+    skill_distribution: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class JwtPrincipal(BaseModel):
     """Decoded JWT principal shared across route dependencies."""
 

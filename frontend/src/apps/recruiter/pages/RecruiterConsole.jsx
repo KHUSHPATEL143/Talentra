@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { getAuthToken, getCurrentPrincipal, listRecruiterJobs, login, registerRecruiter, setAuthToken } from "../../../services/api";
+import { getAuthToken, getCurrentPrincipal, getRecruiterAnalytics, listPoolCandidates, listRecruiterJobs, login, registerRecruiter, requestPoolAccess, setAuthToken } from "../../../services/api";
 
 export default function RecruiterConsole() {
   const hasRecruiterToken = Boolean(getAuthToken());
@@ -13,6 +13,16 @@ export default function RecruiterConsole() {
   const jobsQuery = useQuery({
     queryKey: ["recruiter-jobs"],
     queryFn: listRecruiterJobs,
+    enabled: meQuery.data?.role === "recruiter"
+  });
+  const poolQuery = useQuery({
+    queryKey: ["pool-candidates"],
+    queryFn: () => listPoolCandidates(),
+    enabled: meQuery.data?.role === "recruiter"
+  });
+  const analyticsQuery = useQuery({
+    queryKey: ["recruiter-analytics"],
+    queryFn: getRecruiterAnalytics,
     enabled: meQuery.data?.role === "recruiter"
   });
 
@@ -32,6 +42,9 @@ export default function RecruiterConsole() {
       setAuthToken(data.access_token);
       window.location.reload();
     }
+  });
+  const poolRequestMutation = useMutation({
+    mutationFn: ({ employeeId, jobId }) => requestPoolAccess(employeeId, { job_id: jobId || null, message: "Interested in discussing a role through TalentOS." }),
   });
 
   const jobs = jobsQuery.data?.items || [];
@@ -125,6 +138,64 @@ export default function RecruiterConsole() {
           ) : null}
         </div>
       </section>
+
+      <section className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
+        <section className="rounded-[2rem] bg-white p-8 shadow-panel">
+          <p className="text-sm uppercase tracking-[0.3em] text-stone-500">Analytics</p>
+          <h2 className="mt-3 font-display text-3xl font-bold text-slate-900">Recruiter snapshot</h2>
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <Stat label="Active Jobs" value={analyticsQuery.data?.active_jobs || 0} />
+            <Stat label="Pipeline Candidates" value={analyticsQuery.data?.total_pipeline_candidates || 0} />
+            <Stat label="Shortlisted" value={analyticsQuery.data?.shortlisted_candidates || 0} />
+            <Stat label="Average Score" value={analyticsQuery.data?.average_score || 0} />
+          </div>
+          <div className="mt-6 space-y-2">
+            {(analyticsQuery.data?.skill_distribution || []).map((item) => (
+              <div key={item.skill} className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3 text-sm">
+                <span className="font-medium text-slate-700">{item.skill}</span>
+                <span className="text-slate-500">{item.count}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-[2rem] bg-white p-8 shadow-panel">
+          <p className="text-sm uppercase tracking-[0.3em] text-sky-600">Talent Pool</p>
+          <h2 className="mt-3 font-display text-3xl font-bold text-slate-900">Verified candidates in the marketplace</h2>
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            {(poolQuery.data?.items || []).slice(0, 8).map((candidate) => (
+              <article key={candidate.employee_id} className="rounded-[1.5rem] border border-slate-200 p-5">
+                <h3 className="text-xl font-semibold text-slate-900">{candidate.name}</h3>
+                <p className="mt-1 text-sm text-slate-600">{candidate.location || "Unknown location"}</p>
+                <p className="mt-2 text-sm text-slate-600">Verification {Math.round(candidate.verification_score * 100)}%</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(candidate.top_skills || []).slice(0, 4).map((skill) => (
+                    <span key={`${candidate.employee_id}-${skill}`} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => poolRequestMutation.mutate({ employeeId: candidate.employee_id, jobId: jobs[0]?.id })}
+                  className="mt-4 rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white"
+                >
+                  Request Contact
+                </button>
+              </article>
+            ))}
+          </div>
+        </section>
+      </section>
+    </div>
+  );
+}
+
+function Stat({ label, value }) {
+  return (
+    <div className="rounded-2xl bg-slate-50 p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</p>
+      <p className="mt-2 text-2xl font-bold text-slate-900">{value}</p>
     </div>
   );
 }
