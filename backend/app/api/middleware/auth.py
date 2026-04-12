@@ -21,8 +21,8 @@ class ApiKeyAuthMiddleware(BaseHTTPMiddleware):
 
         super().__init__(app)
         self.open_paths = {"/docs", "/openapi.json", "/redoc", "/metrics"}
-        self.public_prefixes = ("/api/v1/auth/", "/api/v1/board/", "/api/v1/forms/public/")
-        self.jwt_prefixes = ("/api/v1/jobs", "/api/v1/employees", "/api/v1/recruiters", "/api/v1/forms", "/api/v1/pool")
+        self.public_prefixes = ("/api/v1/auth/", "/api/v1/board/", "/api/v1/forms/public/", "/api/v1/public/forms/")
+        self.jwt_prefixes = ("/api/v1/jobs", "/api/v1/employee", "/api/v1/employees", "/api/v1/recruiters", "/api/v1/forms", "/api/v1/pool")
 
     async def dispatch(self, request: Request, call_next):
         """Authenticate the request and attach API key metadata to request state."""

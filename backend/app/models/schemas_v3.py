@@ -411,6 +411,60 @@ class CareerSuggestionResponse(BaseModel):
     score_trajectories: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class ResumeGenerateRequest(BaseModel):
+    """Employee request to generate a resume artifact."""
+
+    template: Literal["classic", "modern", "technical", "academic"] = "classic"
+    format: Literal["pdf", "docx", "both"] = "both"
+
+
+class ResumeArtifactResponse(BaseModel):
+    """Generated resume metadata and download endpoints."""
+
+    resume_id: str
+    template_name: str
+    pdf_url: str | None = None
+    docx_url: str | None = None
+    public_url: str | None = None
+    created_at: datetime
+
+
+class ResumeArtifactListResponse(BaseModel):
+    """Collection of generated resumes owned by the employee."""
+
+    items: list[ResumeArtifactResponse] = Field(default_factory=list)
+    total: int = 0
+
+
+class EmployeeApplyRequest(BaseModel):
+    """Employee one-click apply payload."""
+
+    cover_note: str = ""
+    resume_id: str | None = None
+
+
+class EmployeeApplicationItem(BaseModel):
+    """Employee-facing application tracker row."""
+
+    application_id: str
+    job_id: str
+    job_title: str
+    company: str
+    applied_at: datetime
+    pipeline_stage: str
+    match_score: float = 0.0
+    grade: str = ""
+    source: str = "direct_apply"
+    cover_note: str = ""
+
+
+class EmployeeApplicationListResponse(BaseModel):
+    """Employee application tracker payload."""
+
+    items: list[EmployeeApplicationItem] = Field(default_factory=list)
+    total: int = 0
+
+
 class IntakeFormField(BaseModel):
     """Recruiter-configurable intake field."""
 
@@ -435,6 +489,27 @@ class IntakeFormResponse(BaseModel):
     public_slug: str
     response_count: int
     fields: list[IntakeFormField] = Field(default_factory=list)
+
+
+class RecruiterFormResponseItem(BaseModel):
+    """Recruiter-visible form submission row."""
+
+    form_response_id: str
+    application_id: str | None = None
+    candidate_name: str = ""
+    email: str = ""
+    location: str = ""
+    submitted_at: datetime
+    pipeline_stage: str = "new"
+    match_score: float = 0.0
+    response_preview: dict[str, Any] = Field(default_factory=dict)
+
+
+class RecruiterFormResponseListResponse(BaseModel):
+    """Recruiter-facing list of intake-form submissions."""
+
+    items: list[RecruiterFormResponseItem] = Field(default_factory=list)
+    total: int = 0
 
 
 class PublicFormSubmissionRequest(BaseModel):
