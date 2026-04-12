@@ -20,7 +20,7 @@ class ApiKeyAuthMiddleware(BaseHTTPMiddleware):
         """Initialize middleware with pass-through routes."""
 
         super().__init__(app)
-        self.open_paths = {"/docs", "/openapi.json", "/redoc"}
+        self.open_paths = {"/docs", "/openapi.json", "/redoc", "/api/v1/signup", "/api/v1/login"}
 
     async def dispatch(self, request: Request, call_next):
         """Authenticate the request and attach API key metadata to request state."""

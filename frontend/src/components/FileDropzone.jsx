@@ -8,7 +8,7 @@ const formatConfig = {
   "text/plain": [".txt"]
 };
 
-export default function FileDropzone({ onFileAccepted, multiple }) {
+export default function FileDropzone({ onFileAccepted, multiple = false }) {
   const {
     getRootProps,
     getInputProps,
@@ -64,8 +64,4 @@ export default function FileDropzone({ onFileAccepted, multiple }) {
 FileDropzone.propTypes = {
   onFileAccepted: PropTypes.func.isRequired,
   multiple: PropTypes.bool
-};
-
-FileDropzone.defaultProps = {
-  multiple: false
 };

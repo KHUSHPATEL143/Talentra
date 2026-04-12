@@ -4,9 +4,9 @@ const LOCAL_STORAGE_API_KEY = "garuda_api_key";
 
 export function getClientApiKey() {
   if (typeof window === "undefined") {
-    return process.env.REACT_APP_API_KEY || "";
+    return import.meta.env.VITE_API_KEY || "";
   }
-  return window.localStorage.getItem(LOCAL_STORAGE_API_KEY) || process.env.REACT_APP_API_KEY || "";
+  return window.localStorage.getItem(LOCAL_STORAGE_API_KEY) || import.meta.env.VITE_API_KEY || "";
 }
 
 export function setClientApiKey(value) {
@@ -21,18 +21,47 @@ export function setClientApiKey(value) {
 }
 
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || "http://localhost:8000/api/v1"
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"
 });
 
 api.interceptors.request.use((config) => {
   const nextConfig = { ...config };
   nextConfig.headers = nextConfig.headers || {};
+  
+  // Add API Key if present (legacy)
   const apiKey = getClientApiKey();
   if (apiKey) {
     nextConfig.headers["X-API-Key"] = apiKey;
   }
+  
+  // Add JWT token if present
+  const token = window.localStorage.getItem("talentra_token");
+  if (token) {
+    nextConfig.headers["Authorization"] = `Bearer ${token}`;
+  }
+  
   return nextConfig;
 });
+
+export async function login(email, password) {
+  const response = await api.post("/login", { email, password });
+  if (response.data.access_token) {
+    window.localStorage.setItem("talentra_token", response.data.access_token);
+  }
+  return response.data;
+}
+
+export async function signup(name, email, password) {
+  const response = await api.post("/signup", { name, email, password });
+  if (response.data.access_token) {
+    window.localStorage.setItem("talentra_token", response.data.access_token);
+  }
+  return response.data;
+}
+
+export function logout() {
+  window.localStorage.removeItem("talentra_token");
+}
 
 export async function parseResume(file) {
   const formData = new FormData();
