@@ -6,8 +6,7 @@ import asyncio
 from typing import Any
 
 import httpx
-from sqlalchemy import cast, select, String
-from sqlalchemy import select
+from sqlalchemy import String, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings

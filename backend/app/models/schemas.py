@@ -60,6 +60,7 @@ class ProjectItem(BaseModel):
     name: str = ""
     description: str = ""
     technologies: list[str] = Field(default_factory=list)
+    url: str = ""
 
 
 class PublicationItem(BaseModel):
@@ -80,6 +81,7 @@ class CandidateProfile(BaseModel):
     phone: str = ""
     location: Location = Field(default_factory=Location)
     linkedin: str = ""
+    github: str = ""
     summary: str = ""
     skills: list[str] = Field(default_factory=list)
     experience: list[ExperienceItem] = Field(default_factory=list)
@@ -256,6 +258,17 @@ class TaxonomySearchResult(BaseModel):
     similarity: float
 
 
+class BatchJobFileResult(BaseModel):
+    """Per-file batch processing status for resume parsing."""
+
+    file_name: str
+    job_id: str
+    status: Literal["queued", "processing", "done", "partial", "failed"]
+    candidate_id: str | None = None
+    partial: bool = False
+    error: str | None = None
+
+
 class JobStatusResponse(BaseModel):
     """Batch job status response."""
 
@@ -264,7 +277,7 @@ class JobStatusResponse(BaseModel):
     file_count: int | None = None
     completed_count: int
     total_count: int
-    results: list[dict[str, Any]] = Field(default_factory=list)
+    results: list[BatchJobFileResult] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
 
 
